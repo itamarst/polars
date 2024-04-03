@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from polars.type_aliases import AvroCompression
+    from tests.unit.conftest import MemoryUsage
 
 
 COMPRESSIONS = ["uncompressed", "snappy", "deflate"]
@@ -89,3 +90,35 @@ def test_with_name() -> None:
     read_df = pl.read_json(raw[raw.find(b"{") : raw.rfind(b"}") + 1])
 
     assert_frame_equal(expected, read_df)
+
+
+@pytest.mark.slow()
+@pytest.mark.write_disk()
+def test_read_avro_only_loads_selected_columns(
+    memory_usage_without_pyarrow: MemoryUsage,
+    tmp_path: Path,
+) -> None:
+    """Only requested columns are loaded by ``read_avro()``."""
+    tmp_path.mkdir(exist_ok=True)
+
+    # Each column will be about 8MB of RAM
+    series = pl.arange(0, 1_000_000, dtype=pl.Int64, eager=True)
+
+    file_path = tmp_path / "multicolumn.avro"
+    df = pl.DataFrame(
+        {
+            "a": series,
+            "b": series,
+        }
+    )
+    df.write_avro(file_path)
+    del df, series
+
+    memory_usage_without_pyarrow.reset_tracking()
+
+    # Only load one column:
+    df = pl.read_avro(str(file_path), columns=["b"])
+    del df
+    # Only one column's worth of memory should be used; 2 columns would be
+    # 16_000_000 at least, but there's some overhead.
+    assert 8_000_000 < memory_usage_without_pyarrow.get_peak() < 13_000_000
