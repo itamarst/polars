@@ -4,6 +4,8 @@ use arrow::io::avro::write;
 use polars_core::error::to_compute_err;
 pub use Compression as AvroCompression;
 
+use self::utils::chunk_df_for_writing;
+
 use super::*;
 
 /// Write a [`DataFrame`] to [Apache Avro] format
@@ -61,6 +63,7 @@ where
     }
 
     fn finish(&mut self, df: &mut DataFrame) -> PolarsResult<()> {
+        let df = chunk_df_for_writing(df, 512 * 512)?;
         let schema = df.schema().to_arrow(false);
         let record = write::to_record(&schema, self.name.clone())?;
 
