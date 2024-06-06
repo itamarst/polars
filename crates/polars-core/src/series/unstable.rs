@@ -6,7 +6,7 @@ use polars_utils::unwrap::UnwrapUncheckedRelease;
 use crate::prelude::*;
 
 /// A wrapper type that should make it a bit more clear that we should not clone Series
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct UnstableSeries<'a> {
     lifetime: PhantomData<&'a Series>,
     // A series containing a single chunk ArrayRef
@@ -15,6 +15,9 @@ pub struct UnstableSeries<'a> {
     container: *mut Series,
     // the ptr to the inner chunk, this saves some ptr chasing
     inner: NonNull<ArrayRef>,
+    // The ref count for the Arc in the Series. This should be unchanged once we
+    // do any swapping, since we can't let the data escape.
+    initial_strong_count: usize,
 }
 
 /// We don't implement Deref so that the caller is aware of converting to Series
@@ -41,6 +44,7 @@ impl<'a> UnstableSeries<'a> {
             lifetime: PhantomData,
             container,
             inner: NonNull::new(inner_chunk as *const ArrayRef as *mut ArrayRef).unwrap(),
+            initial_strong_count: Arc::strong_count(&series.0),
         }
     }
 
@@ -55,6 +59,13 @@ impl<'a> UnstableSeries<'a> {
             container: series,
             inner: NonNull::new(inner_chunk as *const ArrayRef as *mut ArrayRef)
                 .unwrap_unchecked_release(),
+            initial_strong_count: Arc::strong_count(&series.0),
+        }
+    }
+
+    fn ensure_no_clones(&mut self) {
+        if Arc::strong_count(&self.as_ref().0) != self.initial_strong_count {
+            panic!("Someone somewhere clone()d the data from an UnstableSeries. Probably a bug in Polars.")
         }
     }
 
@@ -69,9 +80,10 @@ impl<'a> UnstableSeries<'a> {
     }
 
     #[inline]
-    /// Swaps inner state with the `array`. Prefer `UnstableSeries::with_array` as this
-    /// restores the state.
+    /// Swaps inner state with the `array`. Prefer `UnstableSeries::with_array`
+    /// as this restores the state.
     pub fn swap(&mut self, array: &mut ArrayRef) {
+        self.ensure_no_clones();
         unsafe { std::mem::swap(self.inner.as_mut(), array) }
         // ensure lengths are correct.
         self.as_mut()._get_inner_mut().compute_len();
@@ -88,5 +100,13 @@ impl<'a> UnstableSeries<'a> {
         let out = f(self);
         self.swap(array);
         out
+    }
+}
+
+impl<'a> Drop for UnstableSeries<'a> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            self.ensure_no_clones();
+        }
     }
 }

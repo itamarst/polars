@@ -97,7 +97,7 @@ impl<'a> Iterator for LitIter<'a> {
             None
         } else {
             self.offset += 1;
-            Some(Some(self.item))
+            Some(Some(self.item.clone()))
         }
     }
 
@@ -168,7 +168,7 @@ impl<'a> Iterator for FlatIter<'a> {
             }
             self.offset += 1;
             self.chunk_offset += 1;
-            Some(Some(self.item))
+            Some(Some(self.item.clone()))
         }
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
