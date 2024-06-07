@@ -1379,6 +1379,11 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
         """
         Return the `k` largest rows.
 
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
+
         Parameters
         ----------
         k
@@ -1447,6 +1452,11 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
     ) -> Self:
         """
         Return the `k` smallest rows.
+
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
 
         Parameters
         ----------
@@ -3966,7 +3976,7 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
                 "Use of `how='outer'` should be replaced with `how='full'`.",
                 version="0.20.29",
             )
-        elif how == "outer_coalesce":
+        elif how == "outer_coalesce":  # type: ignore[comparison-overlap]
             coalesce = True
             how = "full"
             issue_deprecation_warning(
@@ -4084,14 +4094,12 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
         │ 4.0 ┆ 13.0 ┆ true  │
         └─────┴──────┴───────┘
 
-        Multiple columns can be added by passing a list of expressions.
+        Multiple columns can be added using positional arguments.
 
         >>> lf.with_columns(
-        ...     [
-        ...         (pl.col("a") ** 2).alias("a^2"),
-        ...         (pl.col("b") / 2).alias("b/2"),
-        ...         (pl.col("c").not_()).alias("not c"),
-        ...     ]
+        ...     (pl.col("a") ** 2).alias("a^2"),
+        ...     (pl.col("b") / 2).alias("b/2"),
+        ...     (pl.col("c").not_()).alias("not c"),
         ... ).collect()
         shape: (4, 6)
         ┌─────┬──────┬───────┬─────┬──────┬───────┐
@@ -4105,12 +4113,14 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
         │ 4   ┆ 13.0 ┆ true  ┆ 16  ┆ 6.5  ┆ false │
         └─────┴──────┴───────┴─────┴──────┴───────┘
 
-        Multiple columns also can be added using positional arguments instead of a list.
+        Multiple columns can also be added by passing a list of expressions.
 
         >>> lf.with_columns(
-        ...     (pl.col("a") ** 2).alias("a^2"),
-        ...     (pl.col("b") / 2).alias("b/2"),
-        ...     (pl.col("c").not_()).alias("not c"),
+        ...     [
+        ...         (pl.col("a") ** 2).alias("a^2"),
+        ...         (pl.col("b") / 2).alias("b/2"),
+        ...         (pl.col("c").not_()).alias("not c"),
+        ...     ]
         ... ).collect()
         shape: (4, 6)
         ┌─────┬──────┬───────┬─────┬──────┬───────┐
@@ -4142,8 +4152,8 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
         │ 4   ┆ 13.0 ┆ true  ┆ 52.0 ┆ false │
         └─────┴──────┴───────┴──────┴───────┘
 
-        Expressions with multiple outputs can be automatically instantiated as Structs
-        by enabling the setting `Config.set_auto_structify(True)`:
+        Expressions with multiple outputs can automatically be instantiated as Structs
+        by enabling the experimental setting `Config.set_auto_structify(True)`:
 
         >>> with pl.Config(auto_structify=True):
         ...     lf.drop("c").with_columns(
@@ -5895,27 +5905,34 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
 
     def set_sorted(
         self,
-        column: str | Iterable[str],
-        *more_columns: str,
+        column: str,
+        *,
         descending: bool = False,
     ) -> Self:
         """
         Indicate that one or multiple columns are sorted.
 
+        This can speed up future operations.
+
         Parameters
         ----------
         column
             Columns that are sorted
-        more_columns
-            Additional columns that are sorted, specified as positional arguments.
         descending
             Whether the columns are sorted in descending order.
-        """
-        columns = parse_as_list_of_expressions(column, *more_columns)
 
-        return self.with_columns(
-            [wrap_expr(e).set_sorted(descending=descending) for e in columns]
-        )
+        Warnings
+        --------
+        This can lead to incorrect results if the data is NOT sorted!!
+        Use with care!
+
+        """
+        # NOTE: Only accepts 1 column on purpose! User think they are sorted by
+        # the combined multicolumn values.
+        if not isinstance(column, str):
+            msg = "expected a 'str' for argument 'column' in 'set_sorted'"
+            raise TypeError(msg)
+        return self.with_columns(F.col(column).set_sorted(descending=descending))
 
     @unstable()
     def update(

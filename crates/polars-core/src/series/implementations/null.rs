@@ -196,7 +196,7 @@ impl SeriesTrait for NullChunked {
         NullChunked::new(self.name.clone(), 0).into_series()
     }
 
-    fn cast(&self, data_type: &DataType) -> PolarsResult<Series> {
+    fn cast(&self, data_type: &DataType, _cast_options: CastOptions) -> PolarsResult<Series> {
         Ok(Series::full_null(self.name.as_ref(), self.len(), data_type))
     }
 
@@ -237,6 +237,10 @@ impl SeriesTrait for NullChunked {
             chunks,
         }
         .into_series()
+    }
+
+    fn sort_with(&self, _options: SortOptions) -> PolarsResult<Series> {
+        Ok(self.clone().into_series())
     }
 
     fn is_null(&self) -> BooleanChunked {

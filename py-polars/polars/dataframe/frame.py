@@ -4730,6 +4730,11 @@ class DataFrame:
         """
         Return the `k` largest rows.
 
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
+
         Parameters
         ----------
         k
@@ -4805,6 +4810,11 @@ class DataFrame:
     ) -> DataFrame:
         """
         Return the `k` smallest rows.
+
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
 
         Parameters
         ----------
@@ -7808,10 +7818,8 @@ class DataFrame:
                 fill_values = [fill_values for _ in range(df.width)]
 
             df = df.select(
-                [
-                    s.extend_constant(next_fill, n_fill)
-                    for s, next_fill in zip(df, fill_values)
-                ]
+                s.extend_constant(next_fill, n_fill)
+                for s, next_fill in zip(df, fill_values)
             )
 
         if how == "horizontal":
@@ -7840,7 +7848,7 @@ class DataFrame:
     def partition_by(
         self,
         by: ColumnNameOrSelector | Sequence[ColumnNameOrSelector],
-        *more_by: str,
+        *more_by: ColumnNameOrSelector,
         maintain_order: bool = ...,
         include_key: bool = ...,
         as_dict: Literal[False] = ...,
@@ -7850,11 +7858,21 @@ class DataFrame:
     def partition_by(
         self,
         by: ColumnNameOrSelector | Sequence[ColumnNameOrSelector],
-        *more_by: str,
+        *more_by: ColumnNameOrSelector,
         maintain_order: bool = ...,
         include_key: bool = ...,
         as_dict: Literal[True],
-    ) -> dict[Any, Self]: ...
+    ) -> dict[tuple[object, ...], Self]: ...
+
+    @overload
+    def partition_by(
+        self,
+        by: ColumnNameOrSelector | Sequence[ColumnNameOrSelector],
+        *more_by: ColumnNameOrSelector,
+        maintain_order: bool = ...,
+        include_key: bool = ...,
+        as_dict: bool,
+    ) -> list[Self] | dict[tuple[object, ...], Self]: ...
 
     def partition_by(
         self,
@@ -7863,7 +7881,7 @@ class DataFrame:
         maintain_order: bool = True,
         include_key: bool = True,
         as_dict: bool = False,
-    ) -> list[Self] | dict[Any, Self]:
+    ) -> list[Self] | dict[tuple[object, ...], Self]:
         """
         Group by the given columns and return the groups as separate dataframes.
 
@@ -7999,27 +8017,13 @@ class DataFrame:
         ]
 
         if as_dict:
-            key_as_single_value = isinstance(by, str) and not more_by
-            if key_as_single_value:
-                issue_deprecation_warning(
-                    "`partition_by(..., as_dict=True)` will change to always return tuples as dictionary keys."
-                    f" Pass `by` as a list to silence this warning, e.g. `partition_by([{by!r}], as_dict=True)`.",
-                    version="0.20.4",
-                )
-
             if include_key:
-                if key_as_single_value:
-                    names = [p.get_column(by)[0] for p in partitions]  # type: ignore[arg-type]
-                else:
-                    names = [p.select(by_parsed).row(0) for p in partitions]
+                names = [p.select(by_parsed).row(0) for p in partitions]
             else:
                 if not maintain_order:  # Group keys cannot be matched to partitions
                     msg = "cannot use `partition_by` with `maintain_order=False, include_key=False, as_dict=True`"
                     raise ValueError(msg)
-                if key_as_single_value:
-                    names = self.get_column(by).unique(maintain_order=True).to_list()  # type: ignore[arg-type]
-                else:
-                    names = self.select(by_parsed).unique(maintain_order=True).rows()
+                names = self.select(by_parsed).unique(maintain_order=True).rows()
 
             return dict(zip(names, partitions))
 
@@ -8407,14 +8411,12 @@ class DataFrame:
         │ 4.0 ┆ 13.0 ┆ true  │
         └─────┴──────┴───────┘
 
-        Multiple columns can be added by passing a list of expressions.
+        Multiple columns can be added using positional arguments.
 
         >>> df.with_columns(
-        ...     [
-        ...         (pl.col("a") ** 2).alias("a^2"),
-        ...         (pl.col("b") / 2).alias("b/2"),
-        ...         (pl.col("c").not_()).alias("not c"),
-        ...     ]
+        ...     (pl.col("a") ** 2).alias("a^2"),
+        ...     (pl.col("b") / 2).alias("b/2"),
+        ...     (pl.col("c").not_()).alias("not c"),
         ... )
         shape: (4, 6)
         ┌─────┬──────┬───────┬─────┬──────┬───────┐
@@ -8428,12 +8430,14 @@ class DataFrame:
         │ 4   ┆ 13.0 ┆ true  ┆ 16  ┆ 6.5  ┆ false │
         └─────┴──────┴───────┴─────┴──────┴───────┘
 
-        Multiple columns also can be added using positional arguments instead of a list.
+        Multiple columns can also be added by passing a list of expressions.
 
         >>> df.with_columns(
-        ...     (pl.col("a") ** 2).alias("a^2"),
-        ...     (pl.col("b") / 2).alias("b/2"),
-        ...     (pl.col("c").not_()).alias("not c"),
+        ...     [
+        ...         (pl.col("a") ** 2).alias("a^2"),
+        ...         (pl.col("b") / 2).alias("b/2"),
+        ...         (pl.col("c").not_()).alias("not c"),
+        ...     ]
         ... )
         shape: (4, 6)
         ┌─────┬──────┬───────┬─────┬──────┬───────┐
@@ -10309,26 +10313,32 @@ class DataFrame:
 
     def set_sorted(
         self,
-        column: str | Iterable[str],
-        *more_columns: str,
+        column: str,
+        *,
         descending: bool = False,
     ) -> DataFrame:
         """
         Indicate that one or multiple columns are sorted.
 
+        This can speed up future operations.
+
         Parameters
         ----------
         column
-            Columns that are sorted
-        more_columns
-            Additional columns that are sorted, specified as positional arguments.
+            Column that are sorted
         descending
             Whether the columns are sorted in descending order.
+
+        Warnings
+        --------
+        This can lead to incorrect results if the data is NOT sorted!!
+        Use with care!
+
         """
+        # NOTE: Only accepts 1 column on purpose! User think they are sorted by
+        # the combined multicolumn values.
         return (
-            self.lazy()
-            .set_sorted(column, *more_columns, descending=descending)
-            .collect(_eager=True)
+            self.lazy().set_sorted(column, descending=descending).collect(_eager=True)
         )
 
     @unstable()

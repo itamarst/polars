@@ -389,13 +389,11 @@ class Expr:
         function.
 
         >>> pl.DataFrame({"vals": ["a", "x", None, "a"]}).with_columns(
-        ...     [
-        ...         pl.col("vals").cast(pl.Categorical),
-        ...         pl.col("vals")
-        ...         .cast(pl.Categorical)
-        ...         .to_physical()
-        ...         .alias("vals_physical"),
-        ...     ]
+        ...     pl.col("vals").cast(pl.Categorical),
+        ...     pl.col("vals")
+        ...     .cast(pl.Categorical)
+        ...     .to_physical()
+        ...     .alias("vals_physical"),
         ... )
         shape: (4, 2)
         ┌──────┬───────────────┐
@@ -1705,7 +1703,13 @@ class Expr:
         """
         return self._from_pyexpr(self._pyexpr.mode())
 
-    def cast(self, dtype: PolarsDataType | type[Any], *, strict: bool = True) -> Self:
+    def cast(
+        self,
+        dtype: PolarsDataType | type[Any],
+        *,
+        strict: bool = True,
+        allow_overflow: bool = False,
+    ) -> Self:
         """
         Cast between data types.
 
@@ -1716,6 +1720,8 @@ class Expr:
         strict
             Throw an error if a cast could not be done (for instance, due to an
             overflow).
+        allow_overflow
+            Don't check for numeric overflow and instead do a `wrapping` numeric cast.
 
         Examples
         --------
@@ -1726,10 +1732,8 @@ class Expr:
         ...     }
         ... )
         >>> df.with_columns(
-        ...     [
-        ...         pl.col("a").cast(pl.Float64),
-        ...         pl.col("b").cast(pl.Int32),
-        ...     ]
+        ...     pl.col("a").cast(pl.Float64),
+        ...     pl.col("b").cast(pl.Int32),
         ... )
         shape: (3, 2)
         ┌─────┬─────┐
@@ -1743,7 +1747,7 @@ class Expr:
         └─────┴─────┘
         """
         dtype = py_type_to_dtype(dtype)
-        return self._from_pyexpr(self._pyexpr.cast(dtype, strict))
+        return self._from_pyexpr(self._pyexpr.cast(dtype, strict, allow_overflow))
 
     def sort(self, *, descending: bool = False, nulls_last: bool = False) -> Self:
         """
@@ -1828,9 +1832,13 @@ class Expr:
         r"""
         Return the `k` largest elements.
 
+        Non-null elements are always preferred over null elements. The output
+        is not guaranteed to be in any particular order, call :func:`sort`
+        after this function if you wish the output to be sorted.
+
         This has time complexity:
 
-        .. math:: O(n + k \log{n})
+        .. math:: O(n)
 
         Parameters
         ----------
@@ -1858,11 +1866,11 @@ class Expr:
         │ ---   ┆ ---      │
         │ i64   ┆ i64      │
         ╞═══════╪══════════╡
-        │ 99    ┆ 1        │
-        │ 98    ┆ 2        │
-        │ 4     ┆ 3        │
-        │ 3     ┆ 4        │
-        │ 2     ┆ 98       │
+        │ 4     ┆ 1        │
+        │ 98    ┆ 98       │
+        │ 2     ┆ 2        │
+        │ 3     ┆ 3        │
+        │ 99    ┆ 4        │
         └───────┴──────────┘
         """
         k = parse_as_expression(k)
@@ -1878,9 +1886,14 @@ class Expr:
         r"""
         Return the elements corresponding to the `k` largest elements of the `by` column(s).
 
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
+
         This has time complexity:
 
-        .. math:: O(n + k \log{n})
+        .. math:: O(n \log{n})
 
         Parameters
         ----------
@@ -1989,9 +2002,13 @@ class Expr:
         r"""
         Return the `k` smallest elements.
 
+        Non-null elements are always preferred over null elements. The output is
+        not guaranteed to be in any particular order, call :func:`sort` after
+        this function if you wish the output to be sorted.
+
         This has time complexity:
 
-        .. math:: O(n + k \log{n})
+        .. math:: O(n)
 
         Parameters
         ----------
@@ -2021,11 +2038,11 @@ class Expr:
         │ ---   ┆ ---      │
         │ i64   ┆ i64      │
         ╞═══════╪══════════╡
-        │ 99    ┆ 1        │
-        │ 98    ┆ 2        │
-        │ 4     ┆ 3        │
-        │ 3     ┆ 4        │
-        │ 2     ┆ 98       │
+        │ 4     ┆ 1        │
+        │ 98    ┆ 98       │
+        │ 2     ┆ 2        │
+        │ 3     ┆ 3        │
+        │ 99    ┆ 4        │
         └───────┴──────────┘
         """
         k = parse_as_expression(k)
@@ -2041,9 +2058,14 @@ class Expr:
         r"""
         Return the elements corresponding to the `k` smallest elements of the `by` column(s).
 
+        Non-null elements are always preferred over null elements, regardless of
+        the value of `descending`. The output is not guaranteed to be in any
+        particular order, call :func:`sort` after this function if you wish the
+        output to be sorted.
+
         This has time complexity:
 
-        .. math:: O(n + k \log{n})
+        .. math:: O(n \log{n})
 
         Parameters
         ----------
@@ -9811,7 +9833,7 @@ class Expr:
 
         Warnings
         --------
-        This can lead to incorrect results if this `Series` is not sorted!!
+        This can lead to incorrect results if the data is NOT sorted!!
         Use with care!
 
         Examples

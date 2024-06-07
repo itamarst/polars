@@ -329,10 +329,9 @@ def test_group_by_iteration() -> None:
         [("b", 2, 5), ("b", 4, 3), ("b", 5, 2)],
         [("c", 6, 1)],
     ]
-    with pytest.deprecated_call():
-        gb_iter = enumerate(df.group_by("foo", maintain_order=True))
+    gb_iter = enumerate(df.group_by("foo", maintain_order=True))
     for i, (group, data) in gb_iter:
-        assert group == expected_names[i]
+        assert group == (expected_names[i],)
         assert data.rows() == expected_rows[i]
 
     # Grouped by ALL columns should give groups of a single row
@@ -461,16 +460,11 @@ def test_arg_sort_sort_by_groups_update__4360() -> None:
     out = df.with_columns(
         pl.col("col2").arg_sort().over("group").alias("col2_arg_sort")
     ).with_columns(
-        [
-            pl.col("col1")
-            .sort_by(pl.col("col2_arg_sort"))
-            .over("group")
-            .alias("result_a"),
-            pl.col("col1")
-            .sort_by(pl.col("col2").arg_sort())
-            .over("group")
-            .alias("result_b"),
-        ]
+        pl.col("col1").sort_by(pl.col("col2_arg_sort")).over("group").alias("result_a"),
+        pl.col("col1")
+        .sort_by(pl.col("col2").arg_sort())
+        .over("group")
+        .alias("result_b"),
     )
 
     assert_series_equal(out["result_a"], out["result_b"], check_names=False)
