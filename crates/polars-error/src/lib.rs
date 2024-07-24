@@ -1,3 +1,6 @@
+#![allow(internal_features)]
+#![feature(core_intrinsics)]
+
 pub mod constants;
 mod warning;
 
@@ -403,17 +406,21 @@ pub mod __private {
         error
     }
 
-    /// Support aborting-on-error in debug mode, where it's useful for jumping
-    /// into a debugger on errors.
+    /// Support debugger breakpoints on errors in debug mode.
     #[cfg(debug_assertions)]
     #[doc(hidden)]
-    #[inline(never)] // <-- for faster compilation, hopefully
+    #[inline(never)] // for faster compilation, hopefully
     pub fn maybe_abort() {
         use std::sync::OnceLock;
 
-        static ABORT_ON_ERROR: OnceLock<bool> = OnceLock::new();
-        if *ABORT_ON_ERROR.get_or_init(|| std::env::var("POLARS_ABORT_ON_ERROR").is_ok()) {
-            std::process::abort();
+        static BREAKPOINT_ON_ERROR: OnceLock<bool> = OnceLock::new();
+        if *BREAKPOINT_ON_ERROR.get_or_init(|| std::env::var("POLARS_BREAKPOINT_ON_ERROR").is_ok()) {
+            // If this ever becomes an issue, e.g. nightly drops this feature,
+            // calling std::process::abort() will also trigger the debugger,
+            // albeit in a more terminal fashion.
+            //
+            // Trigger a breakpoint on errors:
+            unsafe { std::intrinsics::breakpoint() };
         }
     }
 
