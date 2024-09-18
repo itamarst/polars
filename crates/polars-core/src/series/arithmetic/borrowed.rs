@@ -368,23 +368,26 @@ pub(crate) fn coerce_lhs_rhs<'a>(
     if let Some(result) = coerce_time_units(lhs, rhs) {
         return Ok(result);
     }
-    let dtype = match (lhs.dtype(), rhs.dtype()) {
+    let (left_dtype, right_dtype) = (lhs.dtype(), rhs.dtype());
+    let inner_super_dtype = match (left_dtype, right_dtype) {
         #[cfg(feature = "dtype-struct")]
         (DataType::Struct(_), DataType::Struct(_)) => {
             return Ok((Cow::Borrowed(lhs), Cow::Borrowed(rhs)))
         },
-        _ => try_get_supertype(lhs.dtype(), rhs.dtype())?,
+        _ => try_get_supertype(left_dtype.inner_dtype().unwrap_or(left_dtype), right_dtype.inner_dtype().unwrap_or(right_dtype))?,
     };
 
-    let left = if lhs.dtype() == &dtype {
+    let new_left_dtype = left_dtype.cast_leaf(inner_super_dtype.clone());
+    let new_right_dtype = right_dtype.cast_leaf(inner_super_dtype);
+    let left = if lhs.dtype() == &new_left_dtype {
         Cow::Borrowed(lhs)
     } else {
-        Cow::Owned(lhs.cast(&dtype)?)
+        Cow::Owned(lhs.cast(&new_left_dtype)?)
     };
-    let right = if rhs.dtype() == &dtype {
+    let right = if rhs.dtype() == &new_right_dtype {
         Cow::Borrowed(rhs)
     } else {
-        Cow::Owned(rhs.cast(&dtype)?)
+        Cow::Owned(rhs.cast(&new_right_dtype)?)
     };
     Ok((left, right))
 }

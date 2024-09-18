@@ -56,6 +56,14 @@ fn lists_same_shapes(left: &ArrayRef, right: &ArrayRef) -> bool {
 impl ListChunked {
     /// Helper function for NumOpsDispatchInner implementation for ListChunked.
     ///
+    /// Run the given `op` on `self` and `rhs`, for cases where `rhs` has a
+    /// primitive numeric dtype.
+    fn arithm_helper_numeric(&self, rhs: &Series, op: &dyn Fn(&Series, &Series) -> PolarsResult<Series>) -> PolarsResult<Series> {
+        todo!()
+    }
+
+    /// Helper function for NumOpsDispatchInner implementation for ListChunked.
+    ///
     /// Run the given `op` on `self` and `rhs`.
     fn arithm_helper(
         &self,
@@ -63,6 +71,9 @@ impl ListChunked {
         op: &dyn Fn(&Series, &Series) -> PolarsResult<Series>,
         has_nulls: Option<bool>,
     ) -> PolarsResult<Series> {
+        if rhs.dtype().is_numeric() {
+            return self.arithm_helper_numeric(rhs, op);
+        }
         polars_ensure!(
             self.len() == rhs.len(),
             InvalidOperation: "can only do arithmetic operations on Series of the same size; got {} and {}",
