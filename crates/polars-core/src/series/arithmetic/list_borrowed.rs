@@ -53,12 +53,55 @@ fn lists_same_shapes(left: &ArrayRef, right: &ArrayRef) -> bool {
     }
 }
 
+/// Arithmetic operations that can be applied to a Series
+#[derive(Clone, Copy)]
+enum Op {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+}
+
+impl Op {
+    /// Apply the operation to a pair of Series.
+    fn apply_with_series(&self, lhs: &Series, rhs: &Series) -> PolarsResult<Series>
+    {
+        use Op::*;
+
+        match self {
+            Add => lhs + rhs,
+            Subtract => lhs - rhs,
+            Multiply => lhs * rhs,
+            Divide => lhs * rhs,
+            Remainder => lhs % rhs,
+        }
+    }
+
+    /// Apply the operation to a Series and scalar.
+    fn apply_with_scalar<T: Num + NumCast>(&self, lhs: &Series, rhs: T) -> Series {
+        use Op::*;
+
+        match self {
+            Add => lhs + rhs,
+            Subtract => lhs - rhs,
+            Multiply => lhs * rhs,
+            Divide => lhs * rhs,
+            Remainder => lhs % rhs,
+        }
+    }
+}
+
 impl ListChunked {
     /// Helper function for NumOpsDispatchInner implementation for ListChunked.
     ///
     /// Run the given `op` on `self` and `rhs`, for cases where `rhs` has a
     /// primitive numeric dtype.
-    fn arithm_helper_numeric(&self, rhs: &Series, op: &dyn Fn(&Series, &Series) -> PolarsResult<Series>) -> PolarsResult<Series> {
+    fn arithm_helper_numeric(
+        &self,
+        rhs: &Series,
+        op: Op,
+    ) -> PolarsResult<Series> {
         let mut result = AnonymousListBuilder::new(
             self.name().clone(),
             self.len(),
@@ -66,18 +109,20 @@ impl ListChunked {
         );
         let dtype = rhs.dtype();
         // TODO other types
-        let combined = self.amortized_iter().zip(rhs.i64()?.iter()).map(|(a, b)| {
-            let (Some(a_owner), Some(b)) = (a, b) else {
-                // Operations with nulls always result in nulls:
-                return Ok(None);
-            };
-            let a = a_owner.as_ref();
-            // TODO use op()
-            let leaf_result = a.get_leaf_array().rechunk() + b;
-            let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
-            Ok(Some(result))
-        })
-        .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?;
+        let combined = self
+            .amortized_iter()
+            .zip(rhs.i64()?.iter())
+            .map(|(a, b)| {
+                let (Some(a_owner), Some(b)) = (a, b) else {
+                    // Operations with nulls always result in nulls:
+                    return Ok(None);
+                };
+                let a = a_owner.as_ref();
+                let leaf_result = op.apply_with_scalar(&a.get_leaf_array().rechunk(), b);
+                let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
+                Ok(Some(result))
+            })
+            .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?;
         for arr in combined.iter() {
             if let Some(arr) = arr {
                 result.append_array(arr.as_ref());
@@ -94,7 +139,7 @@ impl ListChunked {
     fn arithm_helper(
         &self,
         rhs: &Series,
-        op: &dyn Fn(&Series, &Series) -> PolarsResult<Series>,
+        op: Op,
         has_nulls: Option<bool>,
     ) -> PolarsResult<Series> {
         if rhs.dtype().is_numeric() {
@@ -155,7 +200,7 @@ impl ListChunked {
                         // along.
                         a_listchunked.arithm_helper(b, op, Some(true))
                     } else {
-                        op(a, b)
+                        op.apply_with_series(a, b)
                     };
                     chunk_result.map(Some)
                 }).collect::<PolarsResult<Vec<Option<Series>>>>()?;
@@ -176,7 +221,7 @@ impl ListChunked {
             InvalidOperation: "can only do arithmetic operations on lists of the same size"
         );
 
-        let result = op(&l_leaf_array, &r_leaf_array)?;
+        let result = op.apply_with_series(&l_leaf_array, &r_leaf_array)?;
 
         // We now need to wrap the Arrow arrays with the metadata that turns
         // them into lists:
@@ -197,18 +242,18 @@ impl ListChunked {
 
 impl NumOpsDispatchInner for ListType {
     fn add_to(lhs: &ListChunked, rhs: &Series) -> PolarsResult<Series> {
-        lhs.arithm_helper(rhs, &|l, r| l.add_to(r), None)
+        lhs.arithm_helper(rhs, Op::Add, None)
     }
     fn subtract(lhs: &ListChunked, rhs: &Series) -> PolarsResult<Series> {
-        lhs.arithm_helper(rhs, &|l, r| l.subtract(r), None)
+        lhs.arithm_helper(rhs, Op::Subtract, None)
     }
     fn multiply(lhs: &ListChunked, rhs: &Series) -> PolarsResult<Series> {
-        lhs.arithm_helper(rhs, &|l, r| l.multiply(r), None)
+        lhs.arithm_helper(rhs, Op::Multiply, None)
     }
     fn divide(lhs: &ListChunked, rhs: &Series) -> PolarsResult<Series> {
-        lhs.arithm_helper(rhs, &|l, r| l.divide(r), None)
+        lhs.arithm_helper(rhs, Op::Divide, None)
     }
     fn remainder(lhs: &ListChunked, rhs: &Series) -> PolarsResult<Series> {
-        lhs.arithm_helper(rhs, &|l, r| l.remainder(r), None)
+        lhs.arithm_helper(rhs, Op::Remainder, None)
     }
 }
