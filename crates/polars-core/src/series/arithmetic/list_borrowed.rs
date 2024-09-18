@@ -59,7 +59,33 @@ impl ListChunked {
     /// Run the given `op` on `self` and `rhs`, for cases where `rhs` has a
     /// primitive numeric dtype.
     fn arithm_helper_numeric(&self, rhs: &Series, op: &dyn Fn(&Series, &Series) -> PolarsResult<Series>) -> PolarsResult<Series> {
-        todo!()
+        let mut result = AnonymousListBuilder::new(
+            self.name().clone(),
+            self.len(),
+            Some(self.inner_dtype().clone()),
+        );
+        let dtype = rhs.dtype();
+        // TODO other types
+        let combined = self.amortized_iter().zip(rhs.i64()?.iter()).map(|(a, b)| {
+            let (Some(a_owner), Some(b)) = (a, b) else {
+                // Operations with nulls always result in nulls:
+                return Ok(None);
+            };
+            let a = a_owner.as_ref();
+            // TODO use op()
+            let leaf_result = a.get_leaf_array().rechunk() + b;
+            let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
+            Ok(Some(result))
+        })
+        .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?;
+        for arr in combined.iter() {
+            if let Some(arr) = arr {
+                result.append_array(arr.as_ref());
+            } else {
+                result.append_null();
+            }
+        }
+        Ok(result.finish().into())
     }
 
     /// Helper function for NumOpsDispatchInner implementation for ListChunked.
