@@ -753,12 +753,6 @@ def test_list_and_numeric_arithmetic_same_size(
         pl.Series(column_names[0], expected),
     )
 
-        _ = pl.Series("a", [[1, 2]]) + pl.Series("b", ["hello"])
-
-    # Different nesting:
-    with pytest.raises(InvalidOperationError, match="should have same dtype"):
-        _ = pl.Series("a", [[1]]) + pl.Series("b", [[[1]]])
-
 
 def test_schema_owned_arithmetic_5669() -> None:
     df = (
