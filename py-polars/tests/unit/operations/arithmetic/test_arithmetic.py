@@ -699,7 +699,60 @@ def test_list_arithmetic_error_cases() -> None:
         _ = pl.Series("a", [[1, 2], [2, 3]]) / pl.Series("b", [[1], None])
 
     # Wrong types:
-    with pytest.raises(InvalidOperationError, match="they and other Series are numeric"):
+    with pytest.raises(
+        InvalidOperationError, match="they and other Series are numeric"
+    ):
+        _ = pl.Series("a", [[1, 2]]) + pl.Series("b", ["hello"])
+
+    # Different nesting:
+    with pytest.raises(InvalidOperationError, match="should have same dtype"):
+        _ = pl.Series("a", [[1]]) + pl.Series("b", [[[1]]])
+
+
+@pytest.mark.parametrize(
+    ("expected", "expr", "column_names"),
+    [
+        ([[3, 4], [6]], lambda a, b: a + b, ("list", "int64")),
+        ([[-1, 0], [0]], lambda a, b: a - b, ("list", "int64")),
+        ([[2, 4], [9]], lambda a, b: a * b, ("list", "int64")),
+        ([[0.5, 1.0], [1.0]], lambda a, b: a / b, ("list", "int64")),
+        ([[1, 0], [0]], lambda a, b: a % b, ("list", "int64")),
+        (
+            [[3, 4], [7]],
+            lambda a, b: a + b,
+            ("list", "uint8"),
+        ),
+        (
+            [[[2, 4]], [[8]]],
+            lambda a, b: a + b,
+            ("nested", "int64"),
+        ),
+    ],
+)
+def test_list_and_numeric_arithmetic_same_size(
+    expected: Any,
+    expr: Callable[[pl.Series | pl.Expr, pl.Series | pl.Expr], pl.Series],
+    column_names: tuple[str, str],
+) -> None:
+    df = pl.DataFrame(
+        [
+            pl.Series("list", [[1, 2], [3]]),
+            pl.Series("int64", [2, 3], dtype=pl.Int64()),
+            pl.Series("uint8", [2, 4], dtype=pl.UInt8()),
+            pl.Series("nested", [[[1, 2]], [[5]]]),
+        ]
+    )
+    # Expr-based arithmetic:
+    assert_frame_equal(
+        df.select(expr(pl.col(column_names[0]), pl.col(column_names[1]))),
+        pl.Series(column_names[0], expected).to_frame(),
+    )
+    # Direct arithmetic on the Series:
+    assert_series_equal(
+        expr(df[column_names[0]], df[column_names[1]]),
+        pl.Series(column_names[0], expected),
+    )
+
         _ = pl.Series("a", [[1, 2]]) + pl.Series("b", ["hello"])
 
     # Different nesting:
