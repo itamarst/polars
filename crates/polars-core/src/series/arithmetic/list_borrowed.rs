@@ -107,22 +107,25 @@ impl ListChunked {
             self.len(),
             Some(self.inner_dtype().clone()),
         );
-        let dtype = rhs.dtype();
-        // TODO other types
-        let combined = self
-            .amortized_iter()
-            .zip(rhs.i64()?.iter())
-            .map(|(a, b)| {
-                let (Some(a_owner), Some(b)) = (a, b) else {
-                    // Operations with nulls always result in nulls:
-                    return Ok(None);
-                };
-                let a = a_owner.as_ref();
-                let leaf_result = op.apply_with_scalar(&a.get_leaf_array().rechunk(), b);
-                let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
-                Ok(Some(result))
-            })
-            .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?;
+        macro_rules! combine {
+            ($ca:expr) => {{
+                self
+                    .amortized_iter()
+                    .zip($ca.iter())
+                    .map(|(a, b)| {
+                        let (Some(a_owner), Some(b)) = (a, b) else {
+                            // Operations with nulls always result in nulls:
+                            return Ok(None);
+                        };
+                        let a = a_owner.as_ref().rechunk();
+                        let leaf_result = op.apply_with_scalar(&a.get_leaf_array(), b);
+                        let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
+                        Ok(Some(result))
+                    })
+                    .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?
+            }};
+        }
+        let combined = downcast_as_macro_arg_physical!(rhs, combine);
         for arr in combined.iter() {
             if let Some(arr) = arr {
                 result.append_array(arr.as_ref());
