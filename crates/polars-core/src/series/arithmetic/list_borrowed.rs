@@ -73,7 +73,7 @@ impl Op {
             Add => lhs + rhs,
             Subtract => lhs - rhs,
             Multiply => lhs * rhs,
-            Divide => lhs * rhs,
+            Divide => lhs / rhs,
             Remainder => lhs % rhs,
         }
     }
@@ -86,7 +86,7 @@ impl Op {
             Add => lhs + rhs,
             Subtract => lhs - rhs,
             Multiply => lhs * rhs,
-            Divide => lhs * rhs,
+            Divide => lhs / rhs,
             Remainder => lhs % rhs,
         }
     }
