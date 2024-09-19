@@ -369,16 +369,17 @@ pub(crate) fn coerce_lhs_rhs<'a>(
         return Ok(result);
     }
     let (left_dtype, right_dtype) = (lhs.dtype(), rhs.dtype());
-    let inner_super_dtype = match (left_dtype, right_dtype) {
+    let leaf_super_dtype = match (left_dtype, right_dtype) {
         #[cfg(feature = "dtype-struct")]
         (DataType::Struct(_), DataType::Struct(_)) => {
             return Ok((Cow::Borrowed(lhs), Cow::Borrowed(rhs)))
         },
-        _ => try_get_supertype(left_dtype.inner_dtype().unwrap_or(left_dtype), right_dtype.inner_dtype().unwrap_or(right_dtype))?,
+        _ => try_get_supertype(left_dtype.leaf_dtype(), right_dtype.leaf_dtype())?,
     };
 
-    let new_left_dtype = left_dtype.cast_leaf(inner_super_dtype.clone());
-    let new_right_dtype = right_dtype.cast_leaf(inner_super_dtype);
+    let new_left_dtype = left_dtype.cast_leaf(leaf_super_dtype.clone());
+    let new_right_dtype = right_dtype.cast_leaf(leaf_super_dtype);
+
     let left = if lhs.dtype() == &new_left_dtype {
         Cow::Borrowed(lhs)
     } else {
