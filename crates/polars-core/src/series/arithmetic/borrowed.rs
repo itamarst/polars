@@ -502,6 +502,10 @@ impl Add for &Series {
             (DataType::Struct(_), DataType::Struct(_)) => {
                 _struct_arithmetic(self, rhs, |a, b| a.add(b))
             },
+            (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
+                // Lists have implementation logic for rhs numeric:
+                return rhs + self;
+            }
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
                 lhs.add_to(rhs.as_ref())
@@ -554,6 +558,10 @@ impl Mul for &Series {
                 let out = rhs.multiply(self)?;
                 Ok(out.with_name(self.name().clone()))
             },
+            (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
+                // Lists have implementation logic for rhs numeric:
+                return rhs * self;
+            }
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
                 lhs.multiply(rhs.as_ref())
