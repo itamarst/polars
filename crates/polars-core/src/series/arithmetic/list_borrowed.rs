@@ -65,8 +65,7 @@ enum Op {
 
 impl Op {
     /// Apply the operation to a pair of Series.
-    fn apply_with_series(&self, lhs: &Series, rhs: &Series) -> PolarsResult<Series>
-    {
+    fn apply_with_series(&self, lhs: &Series, rhs: &Series) -> PolarsResult<Series> {
         use Op::*;
 
         match self {
@@ -97,11 +96,7 @@ impl ListChunked {
     ///
     /// Run the given `op` on `self` and `rhs`, for cases where `rhs` has a
     /// primitive numeric dtype.
-    fn arithm_helper_numeric(
-        &self,
-        rhs: &Series,
-        op: Op,
-    ) -> PolarsResult<Series> {
+    fn arithm_helper_numeric(&self, rhs: &Series, op: Op) -> PolarsResult<Series> {
         let mut result = AnonymousListBuilder::new(
             self.name().clone(),
             self.len(),
@@ -109,8 +104,7 @@ impl ListChunked {
         );
         macro_rules! combine {
             ($ca:expr) => {{
-                self
-                    .amortized_iter()
+                self.amortized_iter()
                     .zip($ca.iter())
                     .map(|(a, b)| {
                         let (Some(a_owner), Some(b)) = (a, b) else {
@@ -119,7 +113,8 @@ impl ListChunked {
                         };
                         let a = a_owner.as_ref().rechunk();
                         let leaf_result = op.apply_with_scalar(&a.get_leaf_array(), b);
-                        let result = reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
+                        let result =
+                            reshape_list_based_on(&leaf_result.chunks()[0], &a.chunks()[0]);
                         Ok(Some(result))
                     })
                     .collect::<PolarsResult<Vec<Option<Box<dyn Array>>>>>()?
@@ -139,20 +134,30 @@ impl ListChunked {
     /// Helper function for NumOpsDispatchInner implementation for ListChunked.
     ///
     /// Run the given `op` on `self` and `rhs`.
-    fn arithm_helper(
-        &self,
-        rhs: &Series,
-        op: Op,
-        has_nulls: Option<bool>,
-    ) -> PolarsResult<Series> {
-        if rhs.dtype().is_numeric() {
-            return self.arithm_helper_numeric(rhs, op);
-        }
+    fn arithm_helper(&self, rhs: &Series, op: Op, has_nulls: Option<bool>) -> PolarsResult<Series> {
+        // TODO will want to support additional types eventually.
+        polars_ensure!(
+            self.dtype().leaf_dtype().is_numeric() && rhs.dtype().leaf_dtype().is_numeric(),
+            InvalidOperation: "List Series can only do arithmetic operations if they and other Series are numeric, left and right dtypes are {:?} and {:?}",
+            self.dtype(),
+            rhs.dtype()
+        );
         polars_ensure!(
             self.len() == rhs.len(),
             InvalidOperation: "can only do arithmetic operations on Series of the same size; got {} and {}",
             self.len(),
             rhs.len()
+        );
+
+        if rhs.dtype().is_numeric() {
+            return self.arithm_helper_numeric(rhs, op);
+        }
+
+        polars_ensure!(
+            self.dtype() == rhs.dtype(),
+            InvalidOperation: "List Series doing arithmetic operations to each other should have same dtype; got {:?} and {:?}",
+            self.dtype(),
+            rhs.dtype()
         );
 
         let mut has_nulls = has_nulls.unwrap_or(false);

@@ -699,11 +699,11 @@ def test_list_arithmetic_error_cases() -> None:
         _ = pl.Series("a", [[1, 2], [2, 3]]) / pl.Series("b", [[1], None])
 
     # Wrong types:
-    with pytest.raises(InvalidOperationError, match="cannot cast List type"):
+    with pytest.raises(InvalidOperationError, match="they and other Series are numeric"):
         _ = pl.Series("a", [[1, 2]]) + pl.Series("b", ["hello"])
 
     # Different nesting:
-    with pytest.raises(SchemaError, match="failed to determine supertype"):
+    with pytest.raises(InvalidOperationError, match="should have same dtype"):
         _ = pl.Series("a", [[1]]) + pl.Series("b", [[[1]]])
 
 
