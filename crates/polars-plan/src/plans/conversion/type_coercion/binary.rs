@@ -61,7 +61,7 @@ fn process_list_arithmetic(
             if type_right != *leaf {
                 let new_node_right = expr_arena.add(AExpr::Cast {
                     expr: node_right,
-                    dtype: leaf.clone(),
+                    dtype: type_left.cast_leaf(leaf.clone()),
                     options: CastOptions::NonStrict,
                 });
 
@@ -79,7 +79,7 @@ fn process_list_arithmetic(
             if type_left != *leaf {
                 let new_node_left = expr_arena.add(AExpr::Cast {
                     expr: node_left,
-                    dtype: leaf.clone(),
+                    dtype: type_right.cast_leaf(leaf.clone()),
                     options: CastOptions::NonStrict,
                 });
 
