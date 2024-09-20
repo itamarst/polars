@@ -377,8 +377,16 @@ pub(crate) fn coerce_lhs_rhs<'a>(
         _ => try_get_supertype(left_dtype.leaf_dtype(), right_dtype.leaf_dtype())?,
     };
 
-    let new_left_dtype = left_dtype.cast_leaf(leaf_super_dtype.clone());
-    let new_right_dtype = right_dtype.cast_leaf(leaf_super_dtype);
+    let mut new_left_dtype = left_dtype.cast_leaf(leaf_super_dtype.clone());
+    let mut new_right_dtype = right_dtype.cast_leaf(leaf_super_dtype);
+
+    // If we have e.g. Array and List, we want to convert those too.
+    if (left_dtype.is_list() && right_dtype.is_array())
+        || (left_dtype.is_array() && right_dtype.is_list())
+    {
+        new_left_dtype = try_get_supertype(&new_left_dtype, &new_right_dtype)?;
+        new_right_dtype = new_left_dtype.clone();
+    }
 
     let left = if lhs.dtype() == &new_left_dtype {
         Cow::Borrowed(lhs)
@@ -505,7 +513,7 @@ impl Add for &Series {
             (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
                 // Lists have implementation logic for rhs numeric:
                 return rhs + self;
-            }
+            },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
                 lhs.add_to(rhs.as_ref())
@@ -561,7 +569,7 @@ impl Mul for &Series {
             (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
                 // Lists have implementation logic for rhs numeric:
                 return rhs * self;
-            }
+            },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
                 lhs.multiply(rhs.as_ref())
