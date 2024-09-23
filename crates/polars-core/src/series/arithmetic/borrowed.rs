@@ -534,7 +534,9 @@ impl Add for &Series {
             },
             (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
                 // Lists have implementation logic for rhs numeric:
-                return rhs + self;
+                let mut result = (rhs + self)?;
+                result.rename(self.name().clone());
+                return Ok(result);
             },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
@@ -590,7 +592,9 @@ impl Mul for &Series {
             },
             (left_dtype, DataType::List(_)) if left_dtype.is_numeric() => {
                 // Lists have implementation logic for rhs numeric:
-                return rhs * self;
+                let mut result = (rhs * self)?;
+                result.rename(self.name().clone());
+                return Ok(result);
             },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
