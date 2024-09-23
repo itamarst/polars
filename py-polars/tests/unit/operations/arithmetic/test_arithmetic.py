@@ -762,6 +762,32 @@ def test_list_and_numeric_arithmetic_same_size(
     )
 
 
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [
+        ([[1, 2], [3]], [1, None], [[2, 3], None]),
+        ([[[1, 2]], [[3]]], [None, 1], [None, [[4]]]),
+        ([[2, None], [3, 6]], [3, 4], [[5, None], [7, 10]]),
+    ],
+)
+def test_list_and_numeric_arithmetic_nulls(
+    a: list[Any], b: list[Any], expected: list[Any]
+) -> None:
+    series_a = pl.Series(a)
+    series_b = pl.Series(b)
+    series_expected = pl.Series(expected)
+
+    # Same dtype:
+    assert_series_equal(series_a + series_b, series_expected)
+
+    # Different dtype:
+    assert_series_equal(
+        series_a._recursive_cast_to_dtype(pl.Int32())
+        + series_b._recursive_cast_to_dtype(pl.Int64()),
+        series_expected._recursive_cast_to_dtype(pl.Int64()),
+    )
+
+
 def test_schema_owned_arithmetic_5669() -> None:
     df = (
         pl.LazyFrame({"A": [1, 2, 3]})
