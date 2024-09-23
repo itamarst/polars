@@ -748,6 +748,11 @@ def test_list_arithmetic_error_cases() -> None:
             lambda a, b: a + b,
             ("uint8", "list"),
         ),
+        (
+            [[2, 4], [6]],
+            lambda a, b: a * b,
+            ("uint8", "list"),
+        ),
     ],
 )
 def test_list_and_numeric_arithmetic_same_size(
