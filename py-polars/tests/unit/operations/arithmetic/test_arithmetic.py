@@ -749,7 +749,7 @@ def test_list_arithmetic_error_cases() -> None:
             ("uint8", "list"),
         ),
         (
-            [[2, 4], [6]],
+            [[2, 4], [12]],
             lambda a, b: a * b,
             ("uint8", "list"),
         ),
