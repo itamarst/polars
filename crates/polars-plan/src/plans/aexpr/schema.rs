@@ -305,12 +305,11 @@ fn func_args_to_fields(
 /// Left is List(_), right is numeric primitive, we want to cast left's leaf
 /// dtype.
 fn try_get_list_super_type(left: &DataType, right: &DataType) -> PolarsResult<DataType> {
-    debug_assert!(matches!(left, DataType::List(_)));
+    debug_assert!(left.is_list());
     debug_assert!(right.is_numeric());
     let super_type = try_get_supertype(left.leaf_dtype(), right)?;
     Ok(left.cast_leaf(super_type))
 }
-
 
 fn get_arithmetic_field(
     left: Node,
@@ -391,7 +390,12 @@ fn get_arithmetic_field(
                     polars_bail!(InvalidOperation: "{} not allowed on {} and {}", op, left_field.dtype, right_type)
                 },
                 (Boolean, Boolean) => IDX_DTYPE,
-                (List(_), _) if right_type.is_numeric() => try_get_list_super_type(&left_field.dtype, &right_type)?,
+                (List(_), _) if right_type.is_numeric() => {
+                    try_get_list_super_type(&left_field.dtype, &right_type)?
+                },
+                (_, List(_)) if left_field.dtype.is_numeric() => {
+                    try_get_supertype(&left_field.dtype, right_type.leaf_dtype())?
+                },
                 (left, right) => try_get_supertype(left, right)?,
             }
         },
@@ -426,6 +430,11 @@ fn get_arithmetic_field(
                 },
                 (List(_), _) if right_type.is_numeric() => {
                     let dtype = try_get_list_super_type(&left_field.dtype, &right_type)?;
+                    left_field.coerce(dtype);
+                    return Ok(left_field);
+                },
+                (_, List(_)) if left_field.dtype.is_numeric() => {
+                    let dtype = try_get_supertype(&left_field.dtype, right_type.leaf_dtype())?;
                     left_field.coerce(dtype);
                     return Ok(left_field);
                 },
