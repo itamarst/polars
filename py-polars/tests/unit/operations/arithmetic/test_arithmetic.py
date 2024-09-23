@@ -720,20 +720,33 @@ def test_list_arithmetic_error_cases() -> None:
 @pytest.mark.parametrize(
     ("expected", "expr", "column_names"),
     [
+        # All 5 arithmetic operations:
         ([[3, 4], [6]], lambda a, b: a + b, ("list", "int64")),
         ([[-1, 0], [0]], lambda a, b: a - b, ("list", "int64")),
         ([[2, 4], [9]], lambda a, b: a * b, ("list", "int64")),
         ([[0.5, 1.0], [1.0]], lambda a, b: a / b, ("list", "int64")),
         ([[1, 0], [0]], lambda a, b: a % b, ("list", "int64")),
+        # Different types:
         (
             [[3, 4], [7]],
             lambda a, b: a + b,
             ("list", "uint8"),
         ),
+        # Extra nesting + different types:
         (
             [[[3, 4]], [[8]]],
             lambda a, b: a + b,
             ("nested", "int64"),
+        ),
+        # Primitive numeric on the left; only addition and multiplication are
+        # supported:
+        ([[3, 4], [6]], lambda a, b: a + b, ("int64", "list")),
+        ([[2, 4], [9]], lambda a, b: a * b, ("int64", "list")),
+        # Primitive numberic on the left with different types:
+        (
+            [[3, 4], [7]],
+            lambda a, b: a + b,
+            ("uint8", "list"),
         ),
     ],
 )
@@ -765,9 +778,12 @@ def test_list_and_numeric_arithmetic_same_size(
 @pytest.mark.parametrize(
     ("a", "b", "expected"),
     [
+        # Null on numeric on the right:
         ([[1, 2], [3]], [1, None], [[2, 3], None]),
+        # Null on list on the left:
         ([[[1, 2]], [[3]]], [None, 1], [None, [[4]]]),
-        ([[2, None], [3, 6]], [3, 4], [[5, None], [7, 10]]),
+        # Extra nesting:
+        ([[[2, None]], [[3, 6]]], [3, 4], [[[5, None]], [[7, 10]]]),
     ],
 )
 def test_list_and_numeric_arithmetic_nulls(
@@ -784,6 +800,14 @@ def test_list_and_numeric_arithmetic_nulls(
     assert_series_equal(
         series_a._recursive_cast_to_dtype(pl.Int32())
         + series_b._recursive_cast_to_dtype(pl.Int64()),
+        series_expected._recursive_cast_to_dtype(pl.Int64()),
+    )
+
+    # Swap sides:
+    assert_series_equal(series_b + series_a, series_expected)
+    assert_series_equal(
+        series_b._recursive_cast_to_dtype(pl.Int32())
+        + series_a._recursive_cast_to_dtype(pl.Int64()),
         series_expected._recursive_cast_to_dtype(pl.Int64()),
     )
 
