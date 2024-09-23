@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
-use polars_error::PolarsResult;
+use polars_error::{polars_bail, PolarsResult};
 use polars_io::prelude::FileMetadata;
 use polars_io::utils::byte_source::{DynByteSource, MemSliceByteSource};
 use polars_io::utils::slice::SplitSlicePosition;
 use polars_utils::mmap::MemSlice;
 use polars_utils::pl_str::PlSmallStr;
 
-use super::metadata_utils::{ensure_metadata_has_projected_fields, read_parquet_metadata_bytes};
+use super::metadata_utils::{ensure_schema_has_projected_fields, read_parquet_metadata_bytes};
 use super::ParquetSourceNode;
 use crate::async_executor;
 use crate::async_primitives::connector::connector;
@@ -34,11 +34,7 @@ impl ParquetSourceNode {
         let verbose = self.verbose;
         let io_runtime = polars_io::pl_async::get_runtime();
 
-        assert!(
-            !self.projected_arrow_schema.is_empty()
-                || self.file_options.with_columns.as_deref() == Some(&[])
-        );
-        let projected_arrow_schema = self.projected_arrow_schema.clone();
+        let projected_arrow_schema = self.projected_arrow_schema.clone().unwrap();
 
         let (normalized_slice_oneshot_tx, normalized_slice_oneshot_rx) =
             tokio::sync::oneshot::channel();
@@ -60,6 +56,7 @@ impl ParquetSourceNode {
             let scan_sources = scan_sources.clone();
             let cloud_options = cloud_options.clone();
             let byte_source_builder = byte_source_builder.clone();
+            let have_first_metadata = self.first_metadata.is_some();
 
             move |path_idx: usize| {
                 let scan_sources = scan_sources.clone();
@@ -78,7 +75,7 @@ impl ParquetSourceNode {
                             .await?,
                     );
 
-                    if path_idx == 0 {
+                    if path_idx == 0 && have_first_metadata {
                         let metadata_bytes = MemSlice::EMPTY;
                         return Ok((0, byte_source, metadata_bytes));
                     }
@@ -110,6 +107,15 @@ impl ParquetSourceNode {
         };
 
         let first_metadata = self.first_metadata.clone();
+        let reader_schema_len = self
+            .file_info
+            .reader_schema
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap_left()
+            .len();
+        let has_projection = self.file_options.with_columns.is_some();
 
         let process_metadata_bytes = {
             move |handle: task_handles_ext::AbortOnDropHandle<
@@ -122,19 +128,24 @@ impl ParquetSourceNode {
                 let handle = async_executor::spawn(TaskPriority::Low, async move {
                     let (path_index, byte_source, metadata_bytes) = handle.await.unwrap()?;
 
-                    let metadata = if path_index == 0 {
-                        Arc::unwrap_or_clone(first_metadata)
-                    } else {
-                        polars_parquet::parquet::read::deserialize_metadata(
+                    let metadata = match first_metadata {
+                        Some(md) if path_index == 0 => Arc::unwrap_or_clone(md),
+                        _ => polars_parquet::parquet::read::deserialize_metadata(
                             metadata_bytes.as_ref(),
                             metadata_bytes.len() * 2 + 1024,
-                        )?
+                        )?,
                     };
 
-                    ensure_metadata_has_projected_fields(
-                        projected_arrow_schema.as_ref(),
-                        &metadata,
-                    )?;
+                    let schema = polars_parquet::arrow::read::infer_schema(&metadata)?;
+
+                    if !has_projection && schema.len() > reader_schema_len {
+                        polars_bail!(
+                           SchemaMismatch:
+                           "parquet file contained extra columns and no selection was given"
+                        )
+                    }
+
+                    ensure_schema_has_projected_fields(&schema, projected_arrow_schema.as_ref())?;
 
                     PolarsResult::Ok((path_index, byte_source, metadata))
                 });

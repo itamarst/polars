@@ -360,11 +360,8 @@ def test_sort_multi_output_exprs_01() -> None:
     ):
         df.sort("dts", "strs", nulls_last=[True, False, True])
 
-    with pytest.raises(
-        ComputeError,
-        match="No columns selected for sorting",
-    ):
-        df.sort(pl.col("^xxx$"))
+    # No columns selected - return original input.
+    assert_frame_equal(df, df.sort(pl.col("^xxx$")))
 
 
 @pytest.mark.parametrize(
@@ -2148,7 +2145,7 @@ def test_join_suffixes() -> None:
     join_strategies: list[JoinStrategy] = ["left", "inner", "full", "cross"]
     for how in join_strategies:
         # no need for an assert, we error if wrong
-        df_a.join(df_b, on="A", suffix="_y", how=how)["B_y"]
+        df_a.join(df_b, on="A" if how != "cross" else None, suffix="_y", how=how)["B_y"]
 
     df_a.join_asof(df_b, on=pl.col("A").set_sorted(), suffix="_y")["B_y"]
 

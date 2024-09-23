@@ -230,7 +230,6 @@ impl ListChunked {
         );
 
         let result = op.apply_with_series(&l_leaf_array, &r_leaf_array)?;
-
         // We now need to wrap the Arrow arrays with the metadata that turns
         // them into lists:
         // TODO is there a way to do this without cloning the underlying data?

@@ -62,6 +62,17 @@ impl ParquetExec {
         // Modified if we have a negative slice
         let mut first_source = 0;
 
+        let first_schema = self.file_info.reader_schema.clone().unwrap().unwrap_left();
+
+        let projected_arrow_schema = {
+            if let Some(with_columns) = self.file_options.with_columns.as_deref() {
+                Some(Arc::new(first_schema.try_project(with_columns)?))
+            } else {
+                None
+            }
+        };
+        let predicate = self.predicate.clone().map(phys_expr_to_io_expr);
+
         // (offset, end)
         let (slice_offset, slice_end) = if let Some(slice) = self.file_options.slice {
             if slice.0 >= 0 {
@@ -82,7 +93,16 @@ impl ParquetExec {
                             .into_par_iter()
                             .map(|&i| {
                                 let memslice = self.sources.at(i).to_memslice()?;
-                                ParquetReader::new(std::io::Cursor::new(memslice)).num_rows()
+
+                                let mut reader = ParquetReader::new(std::io::Cursor::new(memslice));
+
+                                if i == 0 {
+                                    if let Some(md) = self.metadata.clone() {
+                                        reader.set_metadata(md)
+                                    }
+                                }
+
+                                reader.num_rows()
                             })
                             .collect::<PolarsResult<Vec<_>>>()?;
 
@@ -141,17 +161,17 @@ impl ParquetExec {
                     .as_ref()
                     .map(|x| x[i].materialize_partition_columns());
 
-                let (projection, predicate) = prepare_scan_args(
-                    self.predicate.clone(),
-                    &mut self.file_options.with_columns.clone(),
-                    &mut self.file_info.schema.clone(),
-                    base_row_index.is_some(),
-                    hive_partitions.as_deref(),
-                );
-
                 let memslice = source.to_memslice()?;
 
-                let mut reader = ParquetReader::new(std::io::Cursor::new(memslice))
+                let mut reader = ParquetReader::new(std::io::Cursor::new(memslice));
+
+                if i == 0 {
+                    if let Some(md) = self.metadata.clone() {
+                        reader.set_metadata(md)
+                    }
+                }
+
+                let mut reader = reader
                     .read_parallel(parallel)
                     .set_low_memory(self.options.low_memory)
                     .use_statistics(self.options.use_statistics)
@@ -164,9 +184,7 @@ impl ParquetExec {
                             .map(|x| (x.clone(), Arc::from(source.to_include_path_name()))),
                     );
 
-                reader
-                    .num_rows()
-                    .map(|num_rows| (reader, num_rows, predicate, projection))
+                reader.num_rows().map(|num_rows| (reader, num_rows))
             });
 
             // We do this in parallel because wide tables can take a long time deserializing metadata.
@@ -175,7 +193,7 @@ impl ParquetExec {
             let current_offset_ref = &mut current_offset;
             let row_statistics = readers_and_metadata
                 .iter()
-                .map(|(_, num_rows, _, _)| {
+                .map(|(_, num_rows)| {
                     let cum_rows = *current_offset_ref;
                     (
                         cum_rows,
@@ -188,31 +206,24 @@ impl ParquetExec {
                 readers_and_metadata
                     .into_par_iter()
                     .zip(row_statistics.into_par_iter())
-                    .map(
-                        |((reader, _, predicate, projection), (cumulative_read, slice))| {
-                            let row_index = base_row_index.as_ref().map(|rc| RowIndex {
-                                name: rc.name.clone(),
-                                offset: rc.offset + cumulative_read as IdxSize,
-                            });
+                    .map(|((reader, _), (cumulative_read, slice))| {
+                        let row_index = base_row_index.as_ref().map(|rc| RowIndex {
+                            name: rc.name.clone(),
+                            offset: rc.offset + cumulative_read as IdxSize,
+                        });
 
-                            let df = reader
-                                .with_slice(Some(slice))
-                                .with_row_index(row_index)
-                                .with_predicate(predicate.clone())
-                                .with_projection(projection.clone())
-                                .check_schema(
-                                    self.file_info
-                                        .reader_schema
-                                        .clone()
-                                        .unwrap()
-                                        .unwrap_left()
-                                        .as_ref(),
-                                )?
-                                .finish()?;
+                        let df = reader
+                            .with_slice(Some(slice))
+                            .with_row_index(row_index)
+                            .with_predicate(predicate.clone())
+                            .with_arrow_schema_projection(
+                                first_schema.as_ref(),
+                                projected_arrow_schema.as_deref(),
+                            )?
+                            .finish()?;
 
-                            Ok(df)
-                        },
-                    )
+                        Ok(df)
+                    })
                     .collect::<PolarsResult<Vec<_>>>()
             })?;
 
@@ -244,6 +255,17 @@ impl ParquetExec {
             eprintln!("POLARS PREFETCH_SIZE: {}", batch_size)
         }
 
+        let first_schema = self.file_info.reader_schema.clone().unwrap().unwrap_left();
+
+        let projected_arrow_schema = {
+            if let Some(with_columns) = self.file_options.with_columns.as_deref() {
+                Some(Arc::new(first_schema.try_project(with_columns)?))
+            } else {
+                None
+            }
+        };
+        let predicate = self.predicate.clone().map(phys_expr_to_io_expr);
+
         // Modified if we have a negative slice
         let mut first_file_idx = 0;
 
@@ -266,6 +288,7 @@ impl ParquetExec {
                 let mut iter = stream::iter((0..paths.len()).rev().map(|i| {
                     let paths = paths.clone();
                     let cloud_options = cloud_options.clone();
+                    let first_metadata = first_metadata.clone();
 
                     pl_async::get_runtime().spawn(async move {
                         PolarsResult::Ok((
@@ -273,7 +296,7 @@ impl ParquetExec {
                             ParquetAsyncReader::from_uri(
                                 paths[i].to_str().unwrap(),
                                 cloud_options.as_ref().as_ref(),
-                                None,
+                                first_metadata.filter(|_| i == 0),
                             )
                             .await?
                             .num_rows()
@@ -366,12 +389,12 @@ impl ParquetExec {
                 .collect::<Vec<_>>();
 
             // Now read the actual data.
-            let file_info = &self.file_info;
-            let file_options = &self.file_options;
             let use_statistics = self.options.use_statistics;
-            let predicate = &self.predicate;
             let base_row_index_ref = &base_row_index;
             let include_file_paths = self.file_options.include_file_paths.as_ref();
+            let first_schema = first_schema.clone();
+            let projected_arrow_schema = projected_arrow_schema.clone();
+            let predicate = predicate.clone();
 
             if verbose {
                 eprintln!("reading of {}/{} file...", processed, paths.len());
@@ -381,40 +404,27 @@ impl ParquetExec {
                 .into_iter()
                 .enumerate()
                 .map(|(i, (_, reader))| {
+                    let first_schema = first_schema.clone();
+                    let projected_arrow_schema = projected_arrow_schema.clone();
+                    let predicate = predicate.clone();
                     let (cumulative_read, slice) = row_statistics[i];
                     let hive_partitions = hive_parts
                         .as_ref()
                         .map(|x| x[i].materialize_partition_columns());
 
-                    let schema = self
-                        .file_info
-                        .reader_schema
-                        .as_ref()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap_left()
-                        .clone();
-
                     async move {
-                        let file_info = file_info.clone();
                         let row_index = base_row_index_ref.as_ref().map(|rc| RowIndex {
                             name: rc.name.clone(),
                             offset: rc.offset + cumulative_read as IdxSize,
                         });
 
-                        let (projection, predicate) = prepare_scan_args(
-                            predicate.clone(),
-                            &mut file_options.with_columns.clone(),
-                            &mut file_info.schema.clone(),
-                            row_index.is_some(),
-                            hive_partitions.as_deref(),
-                        );
-
                         let df = reader
                             .with_slice(Some(slice))
                             .with_row_index(row_index)
-                            .with_projection(projection)
-                            .check_schema(schema.as_ref())
+                            .with_arrow_schema_projection(
+                                first_schema.as_ref(),
+                                projected_arrow_schema.as_deref(),
+                            )
                             .await?
                             .use_statistics(use_statistics)
                             .with_predicate(predicate)
