@@ -536,7 +536,7 @@ impl Add for &Series {
                 // Lists have implementation logic for rhs numeric:
                 let mut result = (rhs + self)?;
                 result.rename(self.name().clone());
-                return Ok(result);
+                Ok(result)
             },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
@@ -594,7 +594,7 @@ impl Mul for &Series {
                 // Lists have implementation logic for rhs numeric:
                 let mut result = (rhs * self)?;
                 result.rename(self.name().clone());
-                return Ok(result);
+                Ok(result)
             },
             _ => {
                 let (lhs, rhs) = coerce_lhs_rhs(self, rhs)?;
