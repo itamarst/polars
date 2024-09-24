@@ -21,7 +21,7 @@ from polars import (
     UInt32,
     UInt64,
 )
-from polars.exceptions import ColumnNotFoundError, InvalidOperationError, SchemaError
+from polars.exceptions import ColumnNotFoundError, InvalidOperationError
 from polars.testing import assert_frame_equal, assert_series_equal
 from tests.unit.conftest import INTEGER_DTYPES, NUMERIC_DTYPES
 
@@ -742,7 +742,7 @@ def test_list_arithmetic_error_cases() -> None:
         # supported:
         ([[3, 4], [6]], lambda a, b: a + b, ("int64", "list")),
         ([[2, 4], [9]], lambda a, b: a * b, ("int64", "list")),
-        # Primitive numberic on the left with different types:
+        # Primitive numeric on the left with different types:
         (
             [[3, 4], [7]],
             lambda a, b: a + b,
@@ -834,7 +834,7 @@ def test_list_and_numeric_arithmetic_error_cases() -> None:
     ):
         _ = pl.Series("a", [[1, 2], [3, 4]]) + pl.Series("b", ["hello", "world"])
 
-    # Numeric on right and lis on left doens't work for subtraction, division,
+    # Numeric on right and list on left doesn't work for subtraction, division,
     # or reminder, since they're not commutative operations and it seems
     # semantically weird.
     numeric = pl.Series("a", [1, 2])
