@@ -817,6 +817,36 @@ def test_list_and_numeric_arithmetic_nulls(
     )
 
 
+def test_list_and_numeric_arithmetic_error_cases() -> None:
+    # Different series length:
+    with pytest.raises(
+        InvalidOperationError, match="series of different lengths: got 3 and 2"
+    ):
+        _ = pl.Series("a", [[1, 2], [3, 4], [5, 6]]) + pl.Series("b", [1, 2])
+    with pytest.raises(
+        InvalidOperationError, match="series of different lengths: got 3 and 2"
+    ):
+        _ = pl.Series("a", [[1, 2], [3, 4], [5, 6]]) / pl.Series("b", [1, None])
+
+    # Wrong types:
+    with pytest.raises(
+        InvalidOperationError, match="they and other Series are numeric"
+    ):
+        _ = pl.Series("a", [[1, 2], [3, 4]]) + pl.Series("b", ["hello", "world"])
+
+    # Numeric on right and lis on left doens't work for subtraction, division,
+    # or reminder, since they're not commutative operations and it seems
+    # semantically weird.
+    numeric = pl.Series("a", [1, 2])
+    list_num = pl.Series("b", [[3, 4], [5, 6]])
+    with pytest.raises(InvalidOperationError, match="operation not supported"):
+        numeric / list_num
+    with pytest.raises(InvalidOperationError, match="operation not supported"):
+        numeric - list_num
+    with pytest.raises(InvalidOperationError, match="operation not supported"):
+        numeric % list_num
+
+
 def test_schema_owned_arithmetic_5669() -> None:
     df = (
         pl.LazyFrame({"A": [1, 2, 3]})
