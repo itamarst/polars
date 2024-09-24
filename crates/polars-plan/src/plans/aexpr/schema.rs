@@ -364,7 +364,9 @@ fn get_arithmetic_field(
                 (_, Time) | (Time, _) => {
                     polars_bail!(InvalidOperation: "{} not allowed on {} and {}", op, left_field.dtype, right_type)
                 },
-                (List(_), _) if right_type.is_numeric() => try_get_list_super_type(&left_field.dtype, &right_type)?,
+                (List(_), _) if right_type.is_numeric() => {
+                    try_get_list_super_type(&left_field.dtype, &right_type)?
+                },
                 (left, right) => try_get_supertype(left, right)?,
             }
         },
