@@ -135,7 +135,6 @@ impl ListChunked {
     ///
     /// Run the given `op` on `self` and `rhs`.
     fn arithm_helper(&self, rhs: &Series, op: Op, has_nulls: Option<bool>) -> PolarsResult<Series> {
-        // TODO will want to support additional types eventually.
         polars_ensure!(
             self.dtype().leaf_dtype().is_numeric() && rhs.dtype().leaf_dtype().is_numeric(),
             InvalidOperation: "List Series can only do arithmetic operations if they and other Series are numeric, left and right dtypes are {:?} and {:?}",
