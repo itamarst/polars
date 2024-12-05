@@ -76,3 +76,23 @@ def test_raise_literal_numeric_search_sorted_18096() -> None:
 
     with pytest.raises(pl.exceptions.InvalidOperationError):
         df.with_columns(idx=pl.col("foo").search_sorted("bar"))
+
+
+def test_search_sorted_categorical() -> None:
+    # Sorting will be based on order in which entries were added:
+    series = pl.Series(["c", "b", "b", "a", "c", "b"], dtype=pl.Categorical).sort()
+    series2 = pl.Series(["c", "b", "a"], dtype=series.dtype)
+    assert series.search_sorted(series2).to_list() == [0, 2, 5]
+    assert series.search_sorted("c") == 0
+    assert series.search_sorted("b") == 2
+    assert series.search_sorted("a") == 5
+
+
+def test_search_sorted_enum() -> None:
+    E = pl.Enum(["a", "b", "c"])
+    series = pl.Series(["c", "b", "b", "a", "c", "b"], dtype=E).sort()
+    series2 = pl.Series(["c", "b", "a"], dtype=E)
+    assert series.search_sorted(series2).to_list() == [4, 1, 0]
+    assert series.search_sorted("c") == 4
+    assert series.search_sorted("b") == 1
+    assert series.search_sorted("a") == 0
