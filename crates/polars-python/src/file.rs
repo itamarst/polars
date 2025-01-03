@@ -16,7 +16,7 @@ use polars_utils::create_file;
 use polars_utils::mmap::MemSlice;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyString, PyStringMethods};
+use pyo3::types::{PyBytes, PyMemoryView, PyString, PyStringMethods};
 use pyo3::IntoPyObjectExt;
 
 use crate::error::PyPolarsErr;
@@ -374,16 +374,50 @@ pub fn get_file_like(f: PyObject, truncate: bool) -> PyResult<Box<dyn FileLike>>
 }
 
 /// If the give file-like is a BytesIO, read its contents.
-fn read_if_bytesio(py_f: Bound<PyAny>) -> Bound<PyAny> {
+fn read_if_bytesio<'a>(py_f: &'a Bound<PyAny>) -> Option<MemSlice> {
     if py_f.getattr("read").is_ok() {
-        let Ok(bytes) = py_f.call_method0("getvalue") else {
-            return py_f;
+        let Ok(buffer) = py_f.call_method0("getbuffer") else {
+            return None;
         };
-        if bytes.downcast::<PyBytes>().is_ok() || bytes.downcast::<PyString>().is_ok() {
-            return bytes.clone();
+        if !buffer.downcast::<PyMemoryView>().is_ok()
+            || buffer
+                .getattr("contiguous")
+                .unwrap()
+                .extract::<bool>()
+                .unwrap_or_default()
+                != true
+        {
+            return None;
         }
+        // Once the minimum supported version of Python is 3.11, we can switch
+        // to the ABI stable buffer APIs exposed in pyo3::buffer. Until then, we
+        // manually construct a view into the buffer.
+        //
+        // In particular, we can use
+        // `ctypes.addressof(ctypes.c_char(my_bytesio.getbuffer()))` to get the
+        // pointer address of the underlying data.
+        let py = py_f.py();
+        let ctypes = py.import("ctypes").unwrap();
+        let addressof = ctypes.getattr("addressof").unwrap();
+        let c_char = ctypes.getattr("c_char").unwrap();
+        let length = buffer
+            .getattr("nbytes")
+            .unwrap()
+            .extract::<usize>()
+            .unwrap();
+        let buffer_as_c_char = c_char.call1((buffer.clone(),)).unwrap();
+        let pointer = addressof
+            .call1((buffer_as_c_char,))
+            .unwrap()
+            .extract::<u64>()
+            .unwrap() as *const u8;
+        // Safety: The MemSlice keeps an Arc reference to the memoryview,
+        // keeping it alive, and the memoryview will keep the BytesIO alive on
+        // the Python side.
+        let buf = unsafe { std::slice::from_raw_parts::<'a, u8>(pointer, length) };
+        return Some(MemSlice::from_arc(buf, Arc::new(buffer.unbind())));
     }
-    py_f
+    None
 }
 
 /// Create reader from PyBytes or a file-like object.
@@ -394,17 +428,10 @@ pub fn get_mmap_bytes_reader(py_f: &Bound<PyAny>) -> PyResult<Box<dyn MmapBytesR
 pub fn get_mmap_bytes_reader_and_path(
     py_f: &Bound<PyAny>,
 ) -> PyResult<(Box<dyn MmapBytesReader>, Option<PathBuf>)> {
-    let py_f = read_if_bytesio(py_f.clone());
-
     // bytes object
-    if let Ok(bytes) = py_f.downcast::<PyBytes>() {
-        Ok((
-            Box::new(Cursor::new(MemSlice::from_arc(
-                bytes.as_bytes(),
-                Arc::new(py_f.clone().unbind()),
-            ))),
-            None,
-        ))
+    if let Some(memslice) = read_if_bytesio(py_f) {
+        println!("MEMORYSLICE!");
+        Ok((Box::new(Cursor::new(memslice)), None))
     }
     // string so read file
     else {
