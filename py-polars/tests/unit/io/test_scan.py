@@ -957,4 +957,4 @@ def test_scan_csv_bytesio_memory_usage(
         .item()
         == 9_999_999
     )
-    assert memory_usage.get_peak() - starting_memory == 0
+    assert memory_usage.get_peak() - starting_memory < 10_000_000

@@ -45,6 +45,10 @@ impl PyFileLikeObject {
 
     pub fn to_memslice(&self) -> MemSlice {
         Python::with_gil(|py| {
+            if let Some(memslice) = read_if_bytesio(self.inner.bind(py)) {
+                return memslice;
+            }
+
             let bytes = self
                 .inner
                 .call_method(py, "read", (), None)
