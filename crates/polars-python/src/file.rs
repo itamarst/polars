@@ -375,6 +375,7 @@ pub fn get_file_like(f: PyObject, truncate: bool) -> PyResult<Box<dyn FileLike>>
 
 /// If the give file-like is a BytesIO, read its contents.
 fn read_if_bytesio<'a>(py_f: &'a Bound<PyAny>) -> Option<MemSlice> {
+    println!("READING BYTESIO!");
     if py_f.getattr("read").is_ok() {
         let Ok(buffer) = py_f.call_method0("getbuffer") else {
             return None;
@@ -393,9 +394,17 @@ fn read_if_bytesio<'a>(py_f: &'a Bound<PyAny>) -> Option<MemSlice> {
         // to the ABI stable buffer APIs exposed in pyo3::buffer. Until then, we
         // manually construct a view into the buffer.
         //
-        // In particular, we can use
-        // `ctypes.addressof(ctypes.c_char(my_bytesio.getbuffer()))` to get the
-        // pointer address of the underlying data.
+        // In particular, we can do:
+        //
+        // ```python
+        // from ctypes import addressof, c_char
+        // address = addressof(
+        //     c_char.from_buffer(my_bytesio.getbuffer()
+        // )
+        // ```
+        //
+        // to get the pointer address of the underlying data.
+
         let py = py_f.py();
         let ctypes = py.import("ctypes").unwrap();
         let addressof = ctypes.getattr("addressof").unwrap();
@@ -405,9 +414,11 @@ fn read_if_bytesio<'a>(py_f: &'a Bound<PyAny>) -> Option<MemSlice> {
             .unwrap()
             .extract::<usize>()
             .unwrap();
-        let buffer_as_c_char = c_char.call1((buffer.clone(),)).unwrap();
+        let buffer_as_pointer = c_char
+            .call_method1("from_buffer", (buffer.clone(),))
+            .unwrap();
         let pointer = addressof
-            .call1((buffer_as_c_char,))
+            .call1((buffer_as_pointer,))
             .unwrap()
             .extract::<u64>()
             .unwrap() as *const u8;

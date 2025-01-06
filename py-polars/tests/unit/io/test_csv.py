@@ -2448,3 +2448,22 @@ def test_csv_compressed_new_columns_19916() -> None:
 
     q = pl.scan_csv(b, has_header=False, new_columns=["a", "b", "c", "d", "e", "f"])
     assert_frame_equal(q.collect(), df)
+
+
+def test_read_csv_bytesio_memory_usage(
+    memory_usage_without_pyarrow: MemoryUsage,
+) -> None:
+    memory_usage = memory_usage_without_pyarrow
+
+    # Create CSV that is ~70-85 MB in size:
+    f = io.BytesIO()
+    df = pl.DataFrame({"mydata": pl.int_range(0, 10_000_000, eager=True)})
+    df.write_csv(f)
+    assert 70_000_000 < f.tell() < 85_000_000
+    f.seek(0, 0)
+
+    # Reading a CSV from BytesIO should only make one copy of the memory, not
+    # two (as would be the case if it used getvalue()):
+    starting_memory = memory_usage.get_current()
+    df = pl.read_csv(f)
+    assert memory_usage.get_peak() - starting_memory < 90_000_000

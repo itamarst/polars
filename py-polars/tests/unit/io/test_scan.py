@@ -949,7 +949,7 @@ def test_scan_csv_bytesio_memory_usage(
     f.seek(0, 0)
 
     # A lazy scan shouldn't make a full copy of the data:
-    previous_peak = memory_usage.get_peak()
+    starting_memory = memory_usage.get_current()
     assert (
         pl.scan_csv(f)
         .filter(pl.col("mydata") == 9_999_999)
@@ -957,4 +957,4 @@ def test_scan_csv_bytesio_memory_usage(
         .item()
         == 9_999_999
     )
-    assert memory_usage.get_peak() - previous_peak == 0
+    assert memory_usage.get_peak() - starting_memory == 0

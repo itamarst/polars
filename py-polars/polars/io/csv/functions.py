@@ -606,8 +606,6 @@ def _read_csv_impl(
         path = normalize_filepath(source, check_not_directory=False)
     else:
         path = None
-        if isinstance(source, BytesIO):
-            source = source.getvalue()
         if isinstance(source, StringIO):
             source = source.getvalue().encode()
 
