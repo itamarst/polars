@@ -140,6 +140,8 @@ features = [
 inherits = "dev"
 # Do not produce debug symbols to keep memory usage down:
 debug = false
+# This slows down compilation, but in return speeds up tests!
+opt-level = 1
 
 [profile.mindebug-dev]
 inherits = "dev"
