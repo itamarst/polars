@@ -140,7 +140,6 @@ features = [
 inherits = "dev"
 # Do not produce debug symbols to keep memory usage down:
 debug = false
-codegen-units = 16
 
 [profile.mindebug-dev]
 inherits = "dev"
