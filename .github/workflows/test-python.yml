@@ -25,8 +25,6 @@ concurrency:
 env:
   RUST_BACKTRACE: 1
   PYTHONUTF8: 1
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
 
 defaults:
   run:
@@ -76,8 +74,11 @@ jobs:
       - name: Set up Rust
         run: rustup show
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.7
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: py-polars
+          save-if: ${{ github.ref_name == 'main' }}
 
       - name: Install Polars
         run: cd .. && maturin develop --profile ci-test-python -m py-polars/Cargo.toml
