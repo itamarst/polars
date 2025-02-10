@@ -376,7 +376,7 @@ impl<'a> CoreReader<'a> {
         let pool;
         #[cfg(not(target_family = "wasm"))]
         let pool = if n_threads == POOL.current_num_threads() {
-            &POOL
+            POOL.get_rayon_pool()
         } else {
             pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(n_threads)
@@ -385,7 +385,7 @@ impl<'a> CoreReader<'a> {
             &pool
         };
         #[cfg(target_family = "wasm")]
-        let pool = &POOL;
+        let pool = POOL.get_rayon_pool();
 
         let counter = CountLines::new(self.parse_options.quote_char, self.parse_options.eol_char);
         let mut total_offset = 0;

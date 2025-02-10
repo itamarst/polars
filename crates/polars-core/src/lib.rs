@@ -33,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use datatypes::SchemaExtPl;
 pub use hashing::IdBuildHasher;
 use once_cell::sync::Lazy;
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use rayon::{Scope, ThreadPool as RayonThreadPool, ThreadPoolBuilder};
 
 #[cfg(feature = "dtype-categorical")]
 pub use crate::chunked_array::logical::categorical::string_cache::*;
@@ -45,11 +45,72 @@ pub static PROCESS_ID: Lazy<u128> = Lazy::new(|| {
         .as_nanos()
 });
 
+/// Same interface as Rayon's ThreadPool, with some extra attempts to reduce
+/// compilation time.
+pub struct ThreadPool {
+    rayon_pool: RayonThreadPool,
+}
+
+impl ThreadPool {
+    pub fn install<OP, R>(&self, op: OP) -> R
+    where
+        OP: FnOnce() -> R + Send,
+        R: Send,
+    {
+        self.rayon_pool.install(op)
+    }
+
+    pub fn current_num_threads(&self) -> usize {
+        self.rayon_pool.current_num_threads()
+    }
+
+    pub fn current_thread_index(&self) -> Option<usize> {
+        self.rayon_pool.current_thread_index()
+    }
+
+    pub fn current_thread_has_pending_tasks(&self) -> Option<bool> {
+        self.rayon_pool.current_thread_has_pending_tasks()
+    }
+
+    pub fn join<A, B, RA, RB>(&self, oper_a: A, oper_b: B) -> (RA, RB)
+    where
+        A: FnOnce() -> RA + Send,
+        B: FnOnce() -> RB + Send,
+        RA: Send,
+        RB: Send,
+    {
+        self.rayon_pool.join(oper_a, oper_b)
+    }
+
+    pub fn spawn<OP>(&self, op: OP)
+    where
+        OP: FnOnce() + Send + 'static {
+        self.rayon_pool.spawn(op)
+    }
+
+    pub fn spawn_fifo<OP>(&self, op: OP)
+    where
+        OP: FnOnce() + Send + 'static {
+        self.rayon_pool.spawn_fifo(op);
+    }
+
+    pub fn scope<'scope, OP, R>(&self, op: OP) -> R
+    where
+        OP: FnOnce(&Scope<'scope>) -> R + Send,
+        R: Send {
+        self.rayon_pool.scope(op)
+    }
+
+    pub fn get_rayon_pool(&self) -> &RayonThreadPool {
+        &self.rayon_pool
+    }
+}
+
 // this is re-exported in utils for polars child crates
 #[cfg(not(target_family = "wasm"))] // only use this on non wasm targets
 pub static POOL: Lazy<ThreadPool> = Lazy::new(|| {
     let thread_name = std::env::var("POLARS_THREAD_NAME").unwrap_or_else(|_| "polars".to_string());
-    ThreadPoolBuilder::new()
+    let rayon_pool = ThreadPoolBuilder::new()
         .num_threads(
             std::env::var("POLARS_MAX_THREADS")
                 .map(|s| s.parse::<usize>().expect("integer"))
@@ -61,7 +122,8 @@ pub static POOL: Lazy<ThreadPool> = Lazy::new(|| {
         )
         .thread_name(move |i| format!("{}-{}", thread_name, i))
         .build()
-        .expect("could not spawn threads")
+        .expect("could not spawn threads");
+    ThreadPool { rayon_pool }
 });
 
 #[cfg(all(target_os = "emscripten", target_family = "wasm"))] // Use 1 rayon thread on emscripten

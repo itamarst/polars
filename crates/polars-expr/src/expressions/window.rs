@@ -109,7 +109,7 @@ impl WindowExpr {
         }
         // SAFETY:
         // we only have unique indices ranging from 0..len
-        unsafe { perfect_sort(&POOL, &idx_mapping, &mut take_idx) };
+        unsafe { perfect_sort(POOL.get_rayon_pool(), &idx_mapping, &mut take_idx) };
         Ok(IdxCa::from_vec(PlSmallStr::EMPTY, take_idx))
     }
 
