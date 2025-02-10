@@ -27,6 +27,7 @@ pub mod testing;
 #[cfg(test)]
 mod tests;
 
+use std::any::Any;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -57,7 +58,25 @@ impl ThreadPool {
         OP: FnOnce() -> R + Send,
         R: Send,
     {
-        self.rayon_pool.install(op)
+        // By wrapping with a Box, we reduce how much generic code gets
+        // generated, and thereby reduce compilation time.
+        //
+        // real    2m30.241s
+        // user    11m20.338s
+        // sys     1m29.272s
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let op = || {
+            let result = op();
+            let _ = sender.send(Box::new(result));
+        };
+        let op : Box<dyn FnOnce() -> () + Send> = Box::new(op);
+        self.install_uninlined(op);
+        *receiver.recv().unwrap()
+    }
+
+    #[inline(never)]
+    fn install_uninlined(&self, op: Box<dyn FnOnce() -> () + Send>) {
+        self.rayon_pool.install(op);
     }
 
     pub fn current_num_threads(&self) -> usize {
