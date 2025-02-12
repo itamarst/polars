@@ -83,7 +83,7 @@ jobs:
       - name: Disable optimizations on Windows, they slow down compile time too much
         if: matrix.os == 'windows-latest'
         run: |
-          echo 'RUSTFLAGS="-C opt-level=0"' >> $GITHUB_ENV
+          echo 'RUSTFLAGS=-C opt-level=0' >> $GITHUB_ENV
 
       - name: Install Polars
         run: maturin develop --profile ci-test-python
