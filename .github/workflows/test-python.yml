@@ -25,6 +25,12 @@ concurrency:
 env:
   RUST_BACKTRACE: 1
   PYTHONUTF8: 1
+  # We're running tests with pytest parallelism, so having each test runner have
+  # its own thread pool tied to number of CPUs means N×N threads which just
+  # slows things down. Just 1 might be better for reducing scheduler fighting,
+  # but probably we get more thorough testing if thread pool is more than one
+  # thread.
+  POLARS_MAX_THREADS: 2
 
 defaults:
   run:
