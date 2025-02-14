@@ -141,6 +141,9 @@ inherits = "dev"
 debug = false
 # This speed up builds, and caching didn't seem to work in CI anyway.
 incremental = false
+# Slower build, but hopefully faster tests; opt-level = "z" has less compile
+# time than opt-level = 1.
+opt-level = "z"
 
 [profile.mindebug-dev]
 inherits = "dev"
