@@ -141,11 +141,12 @@ inherits = "dev"
 debug = false
 # This speed up builds, and caching didn't seem to work in CI anyway.
 incremental = false
-# Slower build, but hopefully faster tests; opt-level = "z" has less compile
-# time than opt-level = 1, less codegen units can speed up compilation when
-# there's not a lot of parallelism, i.e. in CI.
-opt-level = "z"
+# The hope is this speeds up things in resource-constrained CI runners:
 codegen-units = 1
+# Contrary to what you'd think, per the docs this appears to do some minimal LTO
+# that is off by default when optimization level is zero, and can speed up tests
+# a bit.
+lto = false
 
 [profile.mindebug-dev]
 inherits = "dev"
