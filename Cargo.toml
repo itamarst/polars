@@ -142,8 +142,10 @@ debug = false
 # This speed up builds, and caching didn't seem to work in CI anyway.
 incremental = false
 # Slower build, but hopefully faster tests; opt-level = "z" has less compile
-# time than opt-level = 1.
+# time than opt-level = 1, less codegen units can speed up compilation when
+# there's not a lot of parallelism, i.e. in CI.
 opt-level = "z"
+codegen-units = 1
 
 [profile.mindebug-dev]
 inherits = "dev"
