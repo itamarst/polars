@@ -141,8 +141,6 @@ inherits = "dev"
 debug = false
 # This speed up builds, and caching didn't seem to work in CI anyway.
 incremental = false
-# The hope is this speeds up things in resource-constrained CI runners:
-codegen-units = 1
 # Contrary to what you'd think, per the docs this appears to do some minimal LTO
 # that is off by default when optimization level is zero, and can speed up tests
 # a bit.
