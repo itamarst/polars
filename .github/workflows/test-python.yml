@@ -26,6 +26,8 @@ env:
   RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
   RUST_BACKTRACE: 1
   PYTHONUTF8: 1
+  # Instead of N×N threads, due to "pytest -n auto" starting N processes, just
+  # run with 2×N threads, which should make things run faster.
   POLARS_MAX_THREADS: 2
 
 defaults:
