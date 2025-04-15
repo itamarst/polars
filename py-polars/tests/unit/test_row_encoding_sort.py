@@ -8,7 +8,7 @@ import functools
 from typing import Any, Literal, Optional, Union, cast
 
 import pytest
-from hypothesis import example, given
+from hypothesis import example, given, strategies as st
 
 import polars as pl
 from polars.testing import assert_frame_equal, assert_series_equal
@@ -177,12 +177,34 @@ def test_series_sort_parametric(s: pl.Series) -> None:
 
 
 @given(
+    values=st.lists(
+        st.none() | st.lists(st.integers(min_value=-10, max_value=10) | st.none())
+    )
+)
+@example(values=[None, []])
+def test_list_with_nulls(values: list[list[int | None] | None]) -> None:
+    series = pl.Series(values, dtype=pl.List(pl.Int64()))
+    for descending in [True, False]:
+        for nulls_last in [True, False]:
+            sorted_series = series.sort(descending=descending, nulls_last=nulls_last)
+            encoded = pl.DataFrame([sorted_series])._row_encode(
+                [(descending, nulls_last, False)]
+            )
+            encoded = [encoded[i] for i in range(len(encoded))]
+            assert sorted(encoded, reverse=descending) == encoded, (
+                sorted_series,
+                descending,
+                nulls_last,
+                encoded,
+            )
+
+
+@given(
     df=dataframes(
         excluded_dtypes=[
             pl.Float32,  # We cannot really deal with totalOrder
             pl.Float64,  # We cannot really deal with totalOrder
             pl.Decimal,  # Bug: see https://github.com/pola-rs/polars/issues/20308
-            pl.List,  # I am not sure what is broken here.
             pl.Array,  # I am not sure what is broken here.
             pl.Enum,
             pl.Categorical,
