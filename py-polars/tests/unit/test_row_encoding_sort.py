@@ -176,27 +176,17 @@ def test_series_sort_parametric(s: pl.Series) -> None:
             )
 
 
-def test_list_sort_order_matches_integers():
-    list_series = pl.Series([[7], None], dtype=pl.List(pl.Int64()))
-    int_series = pl.Series([7, None])
-    for descending in [True, False]:
-        for nulls_last in [True, False]:
-            sorted_list_series = list_series.sort(
-                descending=descending, nulls_last=nulls_last
-            )
-            sorted_int_series = int_series.sort(
-                descending=descending, nulls_last=nulls_last
-            )
-            assert_series_equal(sorted_list_series.explode(), sorted_int_series)
+small_lists = st.lists(st.integers(min_value=-10, max_value=10) | st.none())
 
 
-@given(
-    values=st.lists(
-        st.none() | st.lists(st.integers(min_value=-10, max_value=10) | st.none())
-    )
-)
+@given(values=st.lists(st.none() | small_lists))
 @example(values=[None, []])
-def test_list_with_nulls(values: list[list[int | None] | None]) -> None:
+def test_list_with_nulls_encodes_in_sorted_order(
+    values: list[list[int | None] | None],
+) -> None:
+    """
+    For lists, encoding preserves sort, and sort works.
+    """
     series = pl.Series(values, dtype=pl.List(pl.Int64()))
     for descending in [True, False]:
         for nulls_last in [True, False]:
@@ -205,7 +195,8 @@ def test_list_with_nulls(values: list[list[int | None] | None]) -> None:
                 [(descending, nulls_last, False)]
             )
             encoded = [encoded[i] for i in range(len(encoded))]
-            assert sorted(encoded, reverse=descending) == encoded, (
+            # Encoding will always be _ascending_:
+            assert sorted(encoded) == encoded, (
                 sorted_series,
                 descending,
                 nulls_last,
@@ -402,6 +393,35 @@ def test_order_list() -> None:
     assert_order_series([[]], [[None]], dtype)
     assert_order_series([[]], [[1]], dtype)
     assert_order_series([[1]], [[1, 2]], dtype)
+
+
+@given(
+    values=st.lists(
+        st.none()
+        | st.lists(st.integers(min_value=-10, max_value=10), min_size=1, max_size=1)
+    )
+)
+def test_list_sort_order_matches_integer_sort_order(
+    values: list[list[int] | None],
+) -> None:
+    """
+    The sort order of null-free lists should be the same as integers.
+
+    Lists are sorted by sorting the raw-encoded values.
+    """
+    list_series = pl.Series(values, dtype=pl.List(pl.Int64()))
+    int_series = list_series.explode()
+    for descending in [True, False]:
+        for nulls_last in [True, False]:
+            # Make sure the sort order is what we'd expect; sorting of lists
+            # uses row encoding internally!
+            sorted_list_series = list_series.sort(
+                descending=descending, nulls_last=nulls_last
+            )
+            sorted_int_series = int_series.sort(
+                descending=descending, nulls_last=nulls_last
+            )
+            assert_series_equal(sorted_list_series.explode(), sorted_int_series)
 
 
 def test_order_array() -> None:

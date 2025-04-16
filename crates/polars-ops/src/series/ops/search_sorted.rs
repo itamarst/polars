@@ -91,7 +91,7 @@ pub fn search_sorted(
                 &[descending],
                 &[nulls_last],
             )?;
-            let idx = binary_search_ca(&ca, search_values.iter(), side, descending);
+            let idx = binary_search_ca(&ca, search_values.iter(), side, false);
             Ok(IdxCa::new_vec(s.name().clone(), idx))
         },
         _ => polars_bail!(opq = search_sorted, original_dtype),

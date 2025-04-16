@@ -711,7 +711,9 @@ impl ChunkSort<ListType> for ListChunked {
             &[options.nulls_last],
         )
         .unwrap();
-        bin.arg_sort(options)
+        // Because row encoding takes into account descendingness in how it
+        // generates the encoding, we don't need to set that here anymore:
+        bin.arg_sort(Default::default())
     }
 }
 
