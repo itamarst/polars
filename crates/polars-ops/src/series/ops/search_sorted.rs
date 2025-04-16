@@ -78,19 +78,20 @@ pub fn search_sorted(
             Ok(IdxCa::new_vec(s.name().clone(), idx))
         },
         dt if dt.is_nested() => {
+            let nulls_last = s.is_empty() || s.last().value().is_null();
             let ca = _get_rows_encoded_ca(
                 "".into(),
                 &[s.as_ref().clone().into_column()],
                 &[descending],
-                &[false],
+                &[nulls_last],
             )?;
             let search_values = _get_rows_encoded_ca(
                 "".into(),
                 &[search_values.clone().into_column()],
                 &[descending],
-                &[false],
+                &[nulls_last],
             )?;
-            let idx = binary_search_ca(&ca, search_values.iter(), side, false);
+            let idx = binary_search_ca(&ca, search_values.iter(), side, descending);
             Ok(IdxCa::new_vec(s.name().clone(), idx))
         },
         _ => polars_bail!(opq = search_sorted, original_dtype),
