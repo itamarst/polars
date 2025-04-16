@@ -711,7 +711,7 @@ impl ChunkSort<ListType> for ListChunked {
             &[options.nulls_last],
         )
         .unwrap();
-        bin.arg_sort(Default::default())
+        bin.arg_sort(options)
     }
 }
 

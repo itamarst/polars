@@ -108,7 +108,15 @@ impl RowEncodingOptions {
     }
 
     pub fn list_null_sentinel(self) -> u8 {
-        self.null_sentinel()
+        let mut result = if self.contains(Self::NULLS_LAST) {
+            0xFF
+        } else {
+            0x00
+        };
+        if self.contains(Self::DESCENDING) {
+            result = !result;
+        }
+        result
     }
 
     pub fn list_continuation_token(self) -> u8 {

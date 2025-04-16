@@ -176,6 +176,20 @@ def test_series_sort_parametric(s: pl.Series) -> None:
             )
 
 
+def test_list_sort_order_matches_integers():
+    list_series = pl.Series([[7], None], dtype=pl.List(pl.Int64()))
+    int_series = pl.Series([7, None])
+    for descending in [True, False]:
+        for nulls_last in [True, False]:
+            sorted_list_series = list_series.sort(
+                descending=descending, nulls_last=nulls_last
+            )
+            sorted_int_series = int_series.sort(
+                descending=descending, nulls_last=nulls_last
+            )
+            assert_series_equal(sorted_list_series.explode(), sorted_int_series)
+
+
 @given(
     values=st.lists(
         st.none() | st.lists(st.integers(min_value=-10, max_value=10) | st.none())
