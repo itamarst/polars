@@ -178,6 +178,30 @@ def test_series_sort_parametric(s: pl.Series) -> None:
 
 small_lists = st.lists(st.integers(min_value=-10, max_value=10) | st.none())
 
+ListOfIntLists = list[list[int | None] | None]
+
+
+def sorted_with_nulls(
+    a_list: ListOfIntLists, descending: bool, nulls_last: bool
+) -> ListOfIntLists:
+    # Values are -10 to 10:
+    null_value = [-999, 999][nulls_last]
+    if descending:
+        null_value = -null_value
+
+    def key_for_null(s: list[int | None] | None):
+        return [(null_value if v is None else v) for v in s]
+
+    not_nulls = [v for v in a_list if v is not None]
+    nulls = [None] * (len(a_list) - len(not_nulls))
+
+    not_nulls.sort(reverse=descending, key=key_for_null)
+    if nulls_last:
+        result = not_nulls + nulls
+    else:
+        result = nulls + not_nulls
+    return result
+
 
 @given(values=st.lists(st.none() | small_lists))
 @example(values=[None, []])
@@ -190,18 +214,41 @@ def test_list_with_nulls_encodes_in_sorted_order(
     series = pl.Series(values, dtype=pl.List(pl.Int64()))
     for descending in [True, False]:
         for nulls_last in [True, False]:
+
             sorted_series = series.sort(descending=descending, nulls_last=nulls_last)
+            assert sorted_series.to_list() == sorted_with_nulls(
+                series.to_list(), descending, nulls_last
+            )
             encoded = pl.DataFrame([sorted_series])._row_encode(
                 [(descending, nulls_last, False)]
             )
             encoded = [encoded[i] for i in range(len(encoded))]
             # Encoding will always be _ascending_:
-            assert sorted(encoded) == encoded, (
-                sorted_series,
-                descending,
-                nulls_last,
-                encoded,
+            assert sorted(encoded) == encoded
+
+
+@given(values=st.lists(st.none() | st.lists(small_lists | st.none())))
+@example(values=[None, []])
+def test_list_of_lists_with_nulls_encodes_in_sorted_order(
+    values: list[list[list[int | None] | None] | None],
+) -> None:
+    """
+    For lists of lists, encoding preserves sort.
+    """
+    series = pl.Series(values, dtype=pl.List(pl.List(pl.Int64())))
+    for descending in [True, False]:
+        for nulls_last in [True, False]:
+
+            sorted_series = series.sort(descending=descending, nulls_last=nulls_last)
+            # assert sorted_series.to_list() == sorted_with_nulls(
+            #    series.to_list(), descending, nulls_last
+            # )
+            encoded = pl.DataFrame([sorted_series])._row_encode(
+                [(descending, nulls_last, False)]
             )
+            encoded = [encoded[i] for i in range(len(encoded))]
+            # Encoding will always be _ascending_:
+            assert sorted(encoded) == encoded
 
 
 @given(
