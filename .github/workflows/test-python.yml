@@ -23,9 +23,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUSTFLAGS: -C debuginfo=0  # Do not produce debug symbols to keep memory usage down
   RUST_BACKTRACE: 1
   PYTHONUTF8: 1
+  # We're running tests with pytest parallelism, so having each test runner have
+  # its own thread pool tied to number of CPUs means N×N threads which just
+  # slows things down. Just 1 might be better for reducing scheduler fighting,
+  # but probably we get more thorough testing if thread pool is more than one
+  # thread.
+  POLARS_MAX_THREADS: 2
 
 defaults:
   run:
@@ -80,8 +85,13 @@ jobs:
           workspaces: py-polars
           save-if: ${{ github.ref_name == 'main' }}
 
+      - name: Disable optimizations on Windows, they slow down compile time too much
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo 'RUSTFLAGS=-C opt-level=0' >> $GITHUB_ENV
+
       - name: Install Polars
-        run: maturin develop
+        run: maturin develop --profile ci-test-python
 
       - name: Run doctests
         if: github.ref_name != 'main' && matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
